@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบจัดซื้อจัดจ้าง กบ.ทหาร</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --navy: #0a1628;
+    --navy-2: #0f2044;
+    --navy-3: #162d5a;
+    --accent: #00d4ff;
+    --accent-2: #0099cc;
+    --gold: #f5a623;
+    --gold-2: #e8941a;
+    --green: #00c896;
+    --red: #ff4d6d;
+    --amber: #ffb800;
+    --text: #e8edf5;
+    --text-2: #8a9bb8;
+    --text-3: #566a8a;
+    --border: rgba(255,255,255,0.07);
+    --card: rgba(255,255,255,0.04);
+    --card-hover: rgba(255,255,255,0.07);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'IBM Plex Sans Thai', 'Sarabun', sans-serif;
+    background: var(--navy);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 220px;
+    background: var(--navy-2);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    z-index: 100;
+    padding: 0;
+  }
+  .sidebar-logo {
+    padding: 24px 20px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-logo .emblem {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; margin-bottom: 10px;
+    box-shadow: 0 0 20px rgba(0,212,255,0.3);
+  }
+  .sidebar-logo h1 { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.4; }
+  .sidebar-logo p { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+  .sidebar-nav { padding: 16px 12px; flex: 1; }
+  .nav-label { font-size: 10px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; padding: 0 8px; margin-bottom: 6px; margin-top: 16px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 8px; cursor: pointer;
+    color: var(--text-2); font-size: 13px; font-weight: 400;
+    transition: all 0.15s; border: 1px solid transparent;
+    margin-bottom: 2px;
+  }
+  .nav-item:hover { background: var(--card-hover); color: var(--text); }
+  .nav-item.active { background: rgba(0,212,255,0.1); color: var(--accent); border-color: rgba(0,212,255,0.2); }
+  .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+  .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
+  .update-badge {
+    font-size: 10px; color: var(--text-3);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .live-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* Main */
+  .main { margin-left: 220px; padding: 28px 32px; min-height: 100vh; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* Page header */
+  .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; gap: 16px; flex-wrap: wrap; }
+  .page-title h2 { font-size: 22px; font-weight: 600; color: var(--text); }
+  .page-title p { font-size: 13px; color: var(--text-2); margin-top: 4px; }
+  .header-actions { display: flex; gap: 10px; }
+  .btn {
+    padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; border: 1px solid var(--border);
+    font-family: inherit; display: flex; align-items: center; gap: 6px;
+  }
+  .btn-primary { background: var(--accent); color: var(--navy); border-color: var(--accent); }
+  .btn-primary:hover { background: #00b8e6; }
+  .btn-outline { background: transparent; color: var(--text-2); }
+  .btn-outline:hover { background: var(--card-hover); color: var(--text); }
+
+  /* KPI cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 28px; }
+  .kpi-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px;
+    transition: all 0.2s; position: relative; overflow: hidden;
+  }
+  .kpi-card:hover { background: var(--card-hover); border-color: rgba(255,255,255,0.12); }
+  .kpi-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--accent-color, var(--accent));
+  }
+  .kpi-card.gold::before { --accent-color: var(--gold); }
+  .kpi-card.green::before { --accent-color: var(--green); }
+  .kpi-card.red::before { --accent-color: var(--red); }
+  .kpi-card.amber::before { --accent-color: var(--amber); }
+  .kpi-label { font-size: 11px; color: var(--text-2); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi-value { font-size: 28px; font-weight: 600; color: var(--text); line-height: 1; margin-bottom: 6px; }
+  .kpi-sub { font-size: 11px; color: var(--text-3); }
+
+  /* Charts row */
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+  .chart-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .chart-card h3 { font-size: 13px; font-weight: 500; color: var(--text-2); margin-bottom: 16px; }
+  .chart-wrap { position: relative; }
+
+  /* Alert section */
+  .alerts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 28px; }
+  .alert-item {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+    display: flex; align-items: flex-start; gap: 12px;
+    transition: all 0.15s;
+  }
+  .alert-item:hover { background: var(--card-hover); }
+  .alert-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+  .alert-dot.red { background: var(--red); box-shadow: 0 0 8px rgba(255,77,109,0.6); }
+  .alert-dot.amber { background: var(--amber); box-shadow: 0 0 8px rgba(255,184,0,0.6); }
+  .alert-dot.accent { background: var(--accent); box-shadow: 0 0 8px rgba(0,212,255,0.6); }
+  .alert-content { flex: 1; }
+  .alert-content .title { font-size: 13px; color: var(--text); margin-bottom: 3px; font-weight: 400; line-height: 1.4; }
+  .alert-content .meta { font-size: 11px; color: var(--text-3); }
+  .alert-tag {
+    font-size: 10px; padding: 2px 8px; border-radius: 20px; flex-shrink: 0; align-self: flex-start;
+    font-weight: 500; white-space: nowrap;
+  }
+  .tag-red { background: rgba(255,77,109,0.15); color: #ff6b85; }
+  .tag-amber { background: rgba(255,184,0,0.15); color: #ffcb33; }
+  .tag-blue { background: rgba(0,212,255,0.15); color: var(--accent); }
+  .tag-green { background: rgba(0,200,150,0.15); color: var(--green); }
+
+  /* Table section */
+  .table-section { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .table-header { padding: 18px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .table-header h3 { font-size: 14px; font-weight: 500; color: var(--text); }
+  .table-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  .search-input {
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+    color: var(--text); padding: 7px 14px; border-radius: 8px; font-size: 13px;
+    font-family: inherit; outline: none; width: 220px; transition: border-color 0.15s;
+  }
+  .search-input::placeholder { color: var(--text-3); }
+  .search-input:focus { border-color: rgba(0,212,255,0.4); }
+  .select-ctrl {
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+    color: var(--text); padding: 7px 10px; border-radius: 8px; font-size: 13px;
+    font-family: inherit; outline: none; cursor: pointer;
+  }
+  .select-ctrl option { background: var(--navy-2); }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    padding: 11px 16px; font-size: 11px; font-weight: 600; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.5px; text-align: left;
+    border-bottom: 1px solid var(--border); white-space: nowrap; background: rgba(0,0,0,0.2);
+  }
+  tbody td { padding: 12px 16px; font-size: 13px; color: var(--text); border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+  tbody tr:hover td { background: rgba(255,255,255,0.03); }
+  tbody tr:last-child td { border-bottom: none; }
+  .unit-badge {
+    display: inline-block; font-size: 11px; padding: 3px 9px; border-radius: 6px;
+    background: rgba(0,212,255,0.1); color: var(--accent); font-weight: 500; white-space: nowrap;
+  }
+  .status-pill {
+    display: inline-block; font-size: 11px; padding: 3px 9px; border-radius: 20px; white-space: nowrap; font-weight: 400;
+  }
+  .s-contract { background: rgba(0,200,150,0.12); color: #4de8c0; }
+  .s-pending { background: rgba(255,184,0,0.12); color: #ffc933; }
+  .s-review { background: rgba(255,77,109,0.12); color: #ff7a8a; }
+  .s-active { background: rgba(0,212,255,0.12); color: #4de0ff; }
+  .num-right { text-align: right; font-variant-numeric: tabular-nums; }
+  .days-ok { color: var(--green); font-weight: 500; }
+  .days-warn { color: var(--amber); font-weight: 500; }
+  .days-critical { color: var(--red); font-weight: 500; }
+
+  .table-footer { padding: 12px 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-3); display: flex; justify-content: space-between; align-items: center; }
+
+  /* Summary cards for unit breakdown */
+  .unit-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 28px; }
+  .unit-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; display: flex; align-items: center; gap: 14px;
+  }
+  .unit-icon {
+    width: 42px; height: 42px; border-radius: 10px;
+    background: rgba(0,212,255,0.08); border: 1px solid rgba(0,212,255,0.15);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .unit-info h4 { font-size: 13px; font-weight: 500; color: var(--text); }
+  .unit-info p { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+  .unit-stat { margin-left: auto; text-align: right; }
+  .unit-stat .count { font-size: 22px; font-weight: 600; color: var(--accent); }
+  .unit-stat .label { font-size: 10px; color: var(--text-3); }
+
+  /* Progress bars */
+  .progress-section { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 28px; }
+  .progress-section h3 { font-size: 13px; font-weight: 500; color: var(--text-2); margin-bottom: 20px; }
+  .progress-item { margin-bottom: 16px; }
+  .progress-item:last-child { margin-bottom: 0; }
+  .progress-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px; }
+  .progress-header span:first-child { color: var(--text); }
+  .progress-header span:last-child { color: var(--text-2); }
+  .progress-bar { height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 3px; transition: width 1s ease; }
+
+  /* Telegram page */
+  .tg-steps { display: grid; gap: 16px; margin-bottom: 28px; }
+  .tg-step { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .tg-step-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .step-num { width: 28px; height: 28px; border-radius: 50%; background: rgba(0,212,255,0.15); border: 1px solid rgba(0,212,255,0.3); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
+  .step-title { font-size: 14px; font-weight: 500; color: var(--text); }
+  .code-block {
+    background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; font-family: 'Courier New', monospace; font-size: 12px; color: #a8d8a8;
+    overflow-x: auto; white-space: pre; line-height: 1.6; position: relative;
+  }
+  .code-keyword { color: #82b3d4; }
+  .code-string { color: #c8a87a; }
+  .code-comment { color: #5a7a5a; }
+  .step-note { font-size: 12px; color: var(--text-2); margin-top: 10px; line-height: 1.7; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+  @media (max-width: 1200px) {
+    .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+    .charts-row { grid-template-columns: 1fr 1fr; }
+    .unit-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 900px) {
+    .sidebar { transform: translateX(-220px); transition: transform 0.3s; }
+    .sidebar.open { transform: translateX(0); }
+    .main { margin-left: 0; padding: 20px; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+    .alerts-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="emblem">⚔</div>
+    <h1>ระบบจัดซื้อจัดจ้าง<br>กบ.ทหาร</h1>
+    <p>Royal Thai Armed Forces</p>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-label">เมนูหลัก</div>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <span class="icon">📊</span> ภาพรวม Dashboard
+    </div>
+    <div class="nav-item" onclick="showPage('procurement')">
+      <span class="icon">📋</span> รายการจัดซื้อจัดจ้าง
+    </div>
+    <div class="nav-item" onclick="showPage('units')">
+      <span class="icon">🏛</span> สรุปตามหน่วย
+    </div>
+    <div class="nav-label">เครื่องมือ</div>
+    <div class="nav-item" onclick="showPage('telegram')">
+      <span class="icon">✈</span> Telegram Bot
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="update-badge">
+      <div class="live-dot"></div>
+      ข้อมูล ณ 17 มี.ค. 2569
+    </div>
+  </div>
+</aside>
+
+<main class="main">
+
+  <!-- DASHBOARD PAGE -->
+  <div class="page active" id="page-dashboard">
+    <div class="page-header">
+      <div class="page-title">
+        <h2>ภาพรวม Dashboard</h2>
+        <p>ติดตามสถานะงานจัดซื้อจัดจ้าง บก.ทท. และเหล่าทัพ อำนาจอนุมัติ ผบ.ทสส. และ ปล.กห.</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-outline" onclick="showPage('telegram')">✈ ส่ง Telegram</button>
+        <button class="btn btn-primary" onclick="window.print()">⬇ Export</button>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">งานทั้งหมด งป.68-69</div>
+        <div class="kpi-value">54</div>
+        <div class="kpi-sub">บก.ทท. + เหล่าทัพ</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-label">งานค้าง</div>
+        <div class="kpi-value" style="color:var(--red)">53</div>
+        <div class="kpi-sub">รอดำเนินการ</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">อนุมัติแล้ว งป.69</div>
+        <div class="kpi-value" style="color:var(--green)">1</div>
+        <div class="kpi-sub">จาก 14 รายการ</div>
+      </div>
+      <div class="kpi-card gold">
+        <div class="kpi-label">วงเงินรวม</div>
+        <div class="kpi-value" style="color:var(--gold); font-size:22px">13,375 ลบ.</div>
+        <div class="kpi-sub">งป. 68–69</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">เรื่องค้าง กสล.ฯ</div>
+        <div class="kpi-value" style="color:var(--amber)">4</div>
+        <div class="kpi-sub">รอเสนอต่อ</div>
+      </div>
+    </div>
+
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>สัดส่วนงานตามหน่วย (รายการ)</h3>
+        <div class="chart-wrap" style="height:180px">
+          <canvas id="pieChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h3>วงเงินตามหน่วย บก.ทท. (ล้านบาท)</h3>
+        <div class="chart-wrap" style="height:180px">
+          <canvas id="budgetChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h3>สถานะงาน งป.2569 (รายการ)</h3>
+        <div class="chart-wrap" style="height:180px">
+          <canvas id="statusChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:12px; font-size:12px; font-weight:600; color:var(--text-2); text-transform:uppercase; letter-spacing:0.5px;">งานเร่งด่วน — ต้องติดตาม</div>
+    <div class="alerts-grid">
+      <div class="alert-item">
+        <div class="alert-dot red"></div>
+        <div class="alert-content">
+          <div class="title">จ้างสร้างเรือน้ำมัน 1 ลำ — ทร.</div>
+          <div class="meta">ค้างดำเนินการ 32 วัน · ปล.กห. · 435 ลบ. · กสล.ฯ ตรวจสอบ</div>
+        </div>
+        <span class="alert-tag tag-red">ด่วน</span>
+      </div>
+      <div class="alert-item">
+        <div class="alert-dot amber"></div>
+        <div class="alert-content">
+          <div class="title">รถยนต์โดยสาร 42 ที่นั่ง 4 คัน — ยบ.ทหาร</div>
+          <div class="meta">ค้างดำเนินการ 54 วัน · ผบ.ทสส. · 25.8 ลบ. · อยู่ระหว่างเสนอ ผบ.ทสส.</div>
+        </div>
+        <span class="alert-tag tag-amber">ติดตาม</span>
+      </div>
+      <div class="alert-item">
+        <div class="alert-dot amber"></div>
+        <div class="alert-content">
+          <div class="title">BEECHCRAFT KING AIR 350i #93311 — ผท.ทหาร</div>
+          <div class="meta">ผบ.ทสส. · 61.25 ลบ. · อยู่ระหว่างเสนอ จก.กบ.ทหาร</div>
+        </div>
+        <span class="alert-tag tag-amber">ติดตาม</span>
+      </div>
+      <div class="alert-item">
+        <div class="alert-dot red"></div>
+        <div class="alert-content">
+          <div class="title">เครื่องบินลำเลียงสนับสนุนการปฏิบัติการทางเรือ — ทร.</div>
+          <div class="meta">ปล.กห. · 3,769.9 ลบ. · ยืนราคา หมดอายุ −76 วัน</div>
+        </div>
+        <span class="alert-tag tag-red">หมดอายุ</span>
+      </div>
+      <div class="alert-item">
+        <div class="alert-dot accent"></div>
+        <div class="alert-content">
+          <div class="title">Anti-Drone System 9 ระบบ (ทอ.) — งบกลาง</div>
+          <div class="meta">ปล.กห. · 810 ลบ. · คาดเสนอ กบ.ทหาร เม.ย.69 / ส่งมอบ 120 วัน</div>
+        </div>
+        <span class="alert-tag tag-blue">คาดเสนอ เม.ย.</span>
+      </div>
+      <div class="alert-item">
+        <div class="alert-dot accent"></div>
+        <div class="alert-content">
+          <div class="title">Mobile Anti-Drone (ทอ.) งป.2568</div>
+          <div class="meta">ผบ.ทสส. · 190 ลบ. · คาดเสนอ กบ.ทหาร เม.ย.69 (ยกเลิกครั้งแรก)</div>
+        </div>
+        <span class="alert-tag tag-blue">คาดเสนอ เม.ย.</span>
+      </div>
+    </div>
+
+    <div class="progress-section">
+      <h3>ความคืบหน้าการดำเนินงาน งป.2569 — อำนาจ ผบ.ทสส. (14 รายการ)</h3>
+      <div class="progress-item">
+        <div class="progress-header"><span>บริหารสัญญา / ตรวจรับแล้ว</span><span>1 / 14</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:7%; background: var(--green);"></div></div>
+      </div>
+      <div class="progress-item">
+        <div class="progress-header"><span>อยู่ระหว่างดำเนินการ (กสล.ฯ ถึง ผบ.ทสส.)</span><span>5 / 14</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:36%; background: var(--accent);"></div></div>
+      </div>
+      <div class="progress-item">
+        <div class="progress-header"><span>อยู่ที่หน่วย / รอ TOR / DCIO</span><span>5 / 14</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:36%; background: var(--amber);"></div></div>
+      </div>
+      <div class="progress-item">
+        <div class="progress-header"><span>ยังไม่เข้า กบ.ทหาร</span><span>3 / 14</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:21%; background: var(--text-3);"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROCUREMENT LIST PAGE -->
+  <div class="page" id="page-procurement">
+    <div class="page-header">
+      <div class="page-title">
+        <h2>รายการจัดซื้อจัดจ้าง</h2>
+        <p>งานทั้งหมด งป. 2568–2569 | กบ.ทหาร</p>
+      </div>
+    </div>
+    <div class="table-section">
+      <div class="table-header">
+        <h3>รายการงานทั้งหมด <span id="count-label" style="color:var(--text-3); font-weight:400; font-size:12px;"></span></h3>
+        <div class="table-controls">
+          <input class="search-input" id="searchInput" type="text" placeholder="🔍  ค้นหา ชื่องาน / หน่วย..." oninput="filterTable()">
+          <select class="select-ctrl" id="unitFilter" onchange="filterTable()">
+            <option value="">ทุกหน่วย</option>
+            <option>ยก.ทหาร</option>
+            <option>สส.ทหาร</option>
+            <option>ผท.ทหาร</option>
+            <option>ยบ.ทหาร</option>
+            <option>นซบ.ทหาร</option>
+            <option>นทพ.</option>
+          </select>
+          <select class="select-ctrl" id="authFilter" onchange="filterTable()">
+            <option value="">ทุกอำนาจ</option>
+            <option>ผบ.ทสส.</option>
+            <option>ปล.กห.</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:42px">#</th>
+              <th>หน่วย</th>
+              <th>ชื่องาน / โครงการ</th>
+              <th>วิธี</th>
+              <th style="text-align:right">วงเงิน (บาท)</th>
+              <th>อำนาจ</th>
+              <th>วันส่งมอบ (วัน)</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+      <div class="table-footer">
+        <span id="table-info">แสดงทั้งหมด</span>
+        <span>ข้อมูล ณ 17 มี.ค. 2569</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- UNITS PAGE -->
+  <div class="page" id="page-units">
+    <div class="page-header">
+      <div class="page-title">
+        <h2>สรุปตามหน่วย</h2>
+        <p>ภาพรวมงานจัดซื้อจัดจ้างแยกตามหน่วยงาน</p>
+      </div>
+    </div>
+    <div class="unit-grid">
+      <div class="unit-card">
+        <div class="unit-icon">🎯</div>
+        <div class="unit-info">
+          <h4>ยก.ทหาร</h4>
+          <p>ยุทธการทหาร</p>
+        </div>
+        <div class="unit-stat"><div class="count">5</div><div class="label">รายการ</div></div>
+      </div>
+      <div class="unit-card">
+        <div class="unit-icon">📡</div>
+        <div class="unit-info">
+          <h4>สส.ทหาร</h4>
+          <p>สื่อสารทหาร</p>
+        </div>
+        <div class="unit-stat"><div class="count">6</div><div class="label">รายการ</div></div>
+      </div>
+      <div class="unit-card">
+        <div class="unit-icon">✈</div>
+        <div class="unit-info">
+          <h4>ผท.ทหาร</h4>
+          <p>การบินทหาร</p>
+        </div>
+        <div class="unit-stat"><div class="count">5</div><div class="label">รายการ</div></div>
+      </div>
+      <div class="unit-card">
+        <div class="unit-icon">🛡</div>
+        <div class="unit-info">
+          <h4>นซบ.ทหาร</h4>
+          <p>ความมั่นคงไซเบอร์</p>
+        </div>
+        <div class="unit-stat"><div class="count">3</div><div class="label">รายการ</div></div>
+      </div>
+      <div class="unit-card">
+        <div class="unit-icon">🚗</div>
+        <div class="unit-info">
+          <h4>ยบ.ทหาร</h4>
+          <p>ยานพาหนะทหาร</p>
+        </div>
+        <div class="unit-stat"><div class="count">1</div><div class="label">รายการ</div></div>
+      </div>
+      <div class="unit-card">
+        <div class="unit-icon">🏗</div>
+        <div class="unit-info">
+          <h4>นทพ.</h4>
+          <p>หน่วยทหารพัฒนา</p>
+        </div>
+        <div class="unit-stat"><div class="count">3</div><div class="label">รายการ</div></div>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+      <div class="chart-card">
+        <h3>วงเงินรวมตามหน่วย (งป. บก.ทท.)</h3>
+        <div class="chart-wrap" style="height:240px">
+          <canvas id="unitBudgetChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h3>จำนวนงานตามอำนาจอนุมัติ</h3>
+        <div class="chart-wrap" style="height:240px">
+          <canvas id="authChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELEGRAM PAGE -->
+  <div class="page" id="page-telegram">
+    <div class="page-header">
+      <div class="page-title">
+        <h2>Telegram Bot สำหรับผู้บริหาร</h2>
+        <p>ตั้งค่าระบบส่งรายงานอัตโนมัติผ่าน Telegram ให้ผู้บริหารติดตามได้ทุกที่</p>
+      </div>
+    </div>
+
+    <div style="background: rgba(0,212,255,0.06); border: 1px solid rgba(0,212,255,0.2); border-radius:10px; padding:14px 18px; margin-bottom:24px; font-size:13px; color: #7de8ff; line-height:1.8;">
+      📱 Bot จะส่งรายงานสรุปเข้ากลุ่ม Telegram ผู้บริหาร ทุกวันจันทร์–ศุกร์ เวลา 08:00 น. พร้อมแจ้งเตือนงานเร่งด่วน
+    </div>
+
+    <div class="tg-steps">
+      <div class="tg-step">
+        <div class="tg-step-header">
+          <div class="step-num">1</div>
+          <div class="step-title">สร้าง Telegram Bot ผ่าน @BotFather</div>
+        </div>
+        <div class="step-note">
+          เปิด Telegram → ค้นหา <strong>@BotFather</strong> → พิมพ์ <code>/newbot</code> → ตั้งชื่อ เช่น <em>กบ.ทหาร จัดซื้อจัดจ้าง</em><br>
+          รับ <strong>Bot Token</strong> (รูปแบบ: 1234567890:ABCDefGhIJKlmNoPQRsTUVwXyz)<br>
+          สร้างกลุ่ม Telegram สำหรับผู้บริหาร → เพิ่ม Bot เข้ากลุ่ม → หา Chat ID จาก getUpdates API
+        </div>
+      </div>
+
+      <div class="tg-step">
+        <div class="tg-step-header">
+          <div class="step-num">2</div>
+          <div class="step-title">ติดตั้ง Python และ Libraries</div>
+        </div>
+        <div class="code-block">pip install requests pandas openpyxl</div>
+      </div>
+
+      <div class="tg-step">
+        <div class="tg-step-header">
+          <div class="step-num">3</div>
+          <div class="step-title">สร้างไฟล์ procurement_bot.py</div>
+        </div>
+        <div class="code-block"><span class="code-keyword">import</span> requests
+<span class="code-keyword">import</span> pandas <span class="code-keyword">as</span> pd
+<span class="code-keyword">from</span> datetime <span class="code-keyword">import</span> datetime
+
+BOT_TOKEN = <span class="code-string">"YOUR_BOT_TOKEN_HERE"</span>
+CHAT_ID   = <span class="code-string">"YOUR_GROUP_CHAT_ID"</span>
+EXCEL_FILE = <span class="code-string">"รายการจัดซื้อจัดจ้าง กบ.ทหาร.xlsx"</span>
+
+<span class="code-keyword">def</span> send_daily_report():
+    df = pd.read_excel(EXCEL_FILE, sheet_name=<span class="code-string">"ชีต1"</span>, header=<span class="code-keyword">None</span>)
+    data = df.iloc[2:].copy()
+    data.columns = range(len(data.columns))
+
+    <span class="code-comment"># ดึงงานที่มีข้อมูล</span>
+    rows = []
+    <span class="code-keyword">for</span> _, r <span class="code-keyword">in</span> data.iterrows():
+        no, name, budget = r[1], r[5], r[8]
+        <span class="code-keyword">if</span> pd.notna(no) <span class="code-keyword">and</span> pd.notna(name) <span class="code-keyword">and</span> str(no) <span class="code-keyword">not in</span> [<span class="code-string">'nan'</span>,<span class="code-string">''</span>]:
+            <span class="code-keyword">try</span>:
+                rows.append({<span class="code-string">'no'</span>: str(no), <span class="code-string">'name'</span>: str(name), <span class="code-string">'budget'</span>: float(budget) <span class="code-keyword">if</span> pd.notna(budget) <span class="code-keyword">else</span> 0})
+            <span class="code-keyword">except</span>: <span class="code-keyword">pass</span>
+
+    total   = len(rows)
+    budget  = sum(r[<span class="code-string">'budget'</span>] <span class="code-keyword">for</span> r <span class="code-keyword">in</span> rows)
+    today   = datetime.now().strftime(<span class="code-string">"%d/%m/%Y %H:%M"</span>)
+
+    msg = f<span class="code-string">"""
+📊 *รายงานจัดซื้อจัดจ้าง กบ.ทหาร*
+📅 ข้อมูล ณ {today}
+━━━━━━━━━━━━━━━━━━━━
+
+📦 งานทั้งหมด: *{total} รายการ*
+💰 วงเงินรวม: *{budget/1e6:,.1f} ล้านบาท*
+
+🔴 *งานเร่งด่วน:*
+• จ้างสร้างเรือน้ำมัน ทร. — ค้าง 32 วัน
+• BEECHCRAFT 350i — รอ จก.กบ.ทหาร
+• Anti-Drone ทอ. — คาดเสนอ เม.ย.69
+
+📎 ดูรายละเอียดครบถ้วนในไฟล์แนบ
+
+#กบทหาร #จัดซื้อจัดจ้าง
+    """</span>.strip()
+
+    <span class="code-comment"># ส่งข้อความ</span>
+    requests.post(
+        f<span class="code-string">"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"</span>,
+        json={<span class="code-string">"chat_id"</span>: CHAT_ID, <span class="code-string">"text"</span>: msg, <span class="code-string">"parse_mode"</span>: <span class="code-string">"Markdown"</span>}
+    )
+
+    <span class="code-comment"># ส่งไฟล์ Excel แนบ</span>
+    <span class="code-keyword">with</span> open(EXCEL_FILE, <span class="code-string">"rb"</span>) <span class="code-keyword">as</span> f:
+        requests.post(
+            f<span class="code-string">"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"</span>,
+            data={<span class="code-string">"chat_id"</span>: CHAT_ID, <span class="code-string">"caption"</span>: <span class="code-string">"📎 รายการจัดซื้อจัดจ้างล่าสุด"</span>},
+            files={<span class="code-string">"document"</span>: f}
+        )
+    print(<span class="code-string">"✅ ส่งรายงานสำเร็จ"</span>)
+
+send_daily_report()</div>
+      </div>
+
+      <div class="tg-step">
+        <div class="tg-step-header">
+          <div class="step-num">4</div>
+          <div class="step-title">ตั้ง Cron Job ส่งรายงานอัตโนมัติ</div>
+        </div>
+        <div class="code-block"><span class="code-comment"># Linux/Mac — แก้ไข crontab ด้วย: crontab -e</span>
+<span class="code-comment"># ส่งทุกวันจันทร์–ศุกร์ เวลา 08:00 น.</span>
+0 8 * * 1-5 /usr/bin/python3 /path/to/procurement_bot.py
+
+<span class="code-comment"># Windows Task Scheduler</span>
+<span class="code-comment"># → สร้าง Task ใหม่ → Trigger: Daily 08:00</span>
+<span class="code-comment"># → Action: python C:\procurement_bot.py</span></div>
+        <div class="step-note">
+          เมื่อตั้งค่าเสร็จ Bot จะส่งรายงานสรุปและไฟล์ Excel เข้ากลุ่มผู้บริหารทุกวันอัตโนมัติ<br>
+          หากต้องการให้ Bot ตอบคำถามผู้บริหารด้วย AI (เช่น "งานค้างกี่รายการ?") สามารถต่อยอดด้วย Claude API ได้
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const procData = [
+  {no:"1",unit:"ยก.ทหาร",name:"งานจัดซื้ออุปกรณ์ติดตามกำลังทางบก",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:14780000,days:"134"},
+  {no:"2",unit:"ยก.ทหาร",name:"งานจัดซื้ออุปกรณ์ระบบแผนที่สถานการณ์ร่วมดิจิทัล ระยะที่ 2",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:40840000,days:"163"},
+  {no:"3",unit:"ยก.ทหาร",name:"งานจัดซื้ออุปกรณ์ RPASS Phase 2",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:12960000,days:"157"},
+  {no:"4",unit:"สส.ทหาร",name:"งานจัดซื้อระบบนำเสนอห้องอำนวยการยุทธ์ร่วม ศบท.",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:25190000,days:"88"},
+  {no:"5",unit:"สส.ทหาร",name:"งานจัดหาระบบปฏิบัติการย่านความถี่ฯ (ผูกพัน ปี 68-71)",method:"-",auth:"ปล.กห.",budget:800000000,days:"761"},
+  {no:"6",unit:"ผท.ทหาร",name:"เครื่องมือระบบประมวลผลจัดทำแผนที่ กลุ่มจังหวัดที่ 1",method:"-",auth:"ผบ.ทสส.",budget:55550000,days:"2"},
+  {no:"7",unit:"ผท.ทหาร",name:"เครื่องมือสำรวจข้อมูลภูมิประเทศ ปี 2568",method:"-",auth:"ผบ.ทสส.",budget:20750000,days:"26"},
+  {no:"8",unit:"ผท.ทหาร",name:"เครื่องมือทำแผนที่สามมิติ ปี 2568",method:"-",auth:"ผบ.ทสส.",budget:21980000,days:"47"},
+  {no:"9",unit:"ผท.ทหาร",name:"เช่าเครื่องบินถ่ายภาพทางอากาศ กลุ่มจังหวัดที่ 1",method:"-",auth:"ผบ.ทสส.",budget:128440000,days:"ตรวจรับแล้ว"},
+  {no:"10",unit:"ผท.ทหาร",name:"เช่าเครื่องมือถ่ายภาพทางอากาศ ปี 2568",method:"-",auth:"ผบ.ทสส.",budget:69980000,days:"ตรวจรับแล้ว"},
+  {no:"11",unit:"สส.ทหาร",name:"ชุดวิทยุไมโครเวฟ IP ภาค NE+เหนือล่าง",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:98570000,days:"193"},
+  {no:"12",unit:"สส.ทหาร",name:"ชุดไมโครเวฟ ภาคกลาง+เหนือบน",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:96880000,days:"193"},
+  {no:"13",unit:"สส.ทหาร",name:"ชุดไมโครเวฟ ภาคใต้",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:99220000,days:"193"},
+  {no:"14",unit:"นซบ.ทหาร",name:"งานจ้างอบรมชุดปฏิบัติการไซเบอร์",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:18820000,days:"-"},
+  {no:"15",unit:"นซบ.ทหาร",name:"ระบบป้องกันภัยคุกคามไซเบอร์",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:26827416,days:"-"},
+  {no:"16",unit:"นซบ.ทหาร",name:"ระบบสนับสนุนป้องกันภัยไซเบอร์",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:16532398,days:"-"},
+  {no:"18",unit:"ยก.ทหาร",name:"พัฒนาระบบป้องกันและปราบปรามยาเสพติด",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:21174984,days:"-"},
+  {no:"19",unit:"ยก.ทหาร",name:"พัฒนาระบบประเมินพร้อมรบ",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:29500000,days:"-"},
+  {no:"21",unit:"สส.ทหาร",name:"ระบบยืนยันตัวตนเครือข่าย บก.ทท. (210 วัน)",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:44000000,days:"210"},
+  {no:"23",unit:"สส.ทหาร",name:"Data Governance & Data Management (270 วัน)",method:"คัดเลือก ม.56(1)(ฉ)",auth:"ผบ.ทสส.",budget:22000000,days:"270"},
+  {no:"24",unit:"ผท.ทหาร",name:"ซ่อมบำรุงเฮลิคอปเตอร์ EC155 B1",method:"เจาะจง ม.56(2)(ซ)",auth:"ผบ.ทสส.",budget:31800000,days:"289"},
+  {no:"25",unit:"ผท.ทหาร",name:"ซ่อมบำรุง BEECHCRAFT KING AIR 350i #93311",method:"เจาะจง ม.56(2)(ค)",auth:"ผบ.ทสส.",budget:61250000,days:"-"},
+  {no:"26",unit:"ยบ.ทหาร",name:"รถยนต์โดยสารปรับอากาศ 42 ที่นั่ง จำนวน 4 คัน",method:"ประกาศเชิญชวนทั่วไป",auth:"ผบ.ทสส.",budget:25800000,days:"-"},
+  {no:"28",unit:"นทพ.",name:"รถบดล้อเหล็กสั่นสะเทือน จำนวน 10 คัน",method:"เจาะจง ม.56(2)(จ)",auth:"ผบ.ทสส.",budget:32280000,days:"-"},
+  {no:"29",unit:"นทพ.",name:"รถขุดตักมาตรฐาน จำนวน 12 คัน",method:"ประกาศเชิญชวนทั่วไป",auth:"ผบ.ทสส.",budget:62016000,days:"-"},
+];
+
+function getDaysClass(d) {
+  const n = parseInt(d);
+  if (isNaN(n)) return '';
+  if (n <= 30) return 'days-critical';
+  if (n <= 90) return 'days-warn';
+  return 'days-ok';
+}
+function fmt(n) { return n.toLocaleString('th-TH'); }
+
+function renderTable(rows) {
+  const tb = document.getElementById('tableBody');
+  tb.innerHTML = rows.map(d => `
+    <tr>
+      <td style="color:var(--text-3)">${d.no}</td>
+      <td><span class="unit-badge">${d.unit}</span></td>
+      <td style="max-width:320px; line-height:1.5">${d.name}</td>
+      <td style="font-size:12px; color:var(--text-3); white-space:nowrap">${d.method || '-'}</td>
+      <td class="num-right" style="white-space:nowrap">${fmt(d.budget)}</td>
+      <td style="font-size:12px; white-space:nowrap">${d.auth}</td>
+      <td class="${getDaysClass(d.days)}" style="text-align:center">${d.days || '-'}</td>
+    </tr>
+  `).join('');
+  document.getElementById('table-info').textContent = `แสดง ${rows.length} จาก ${procData.length} รายการ`;
+}
+renderTable(procData);
+
+function filterTable() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const u = document.getElementById('unitFilter').value;
+  const a = document.getElementById('authFilter').value;
+  const filtered = procData.filter(d =>
+    (!q || d.name.toLowerCase().includes(q) || d.unit.toLowerCase().includes(q)) &&
+    (!u || d.unit === u) &&
+    (!a || d.auth === a)
+  );
+  renderTable(filtered);
+}
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const idx = ['dashboard','procurement','units','telegram'].indexOf(name);
+  document.querySelectorAll('.nav-item')[idx]?.classList.add('active');
+}
+
+// Charts
+const chartDefaults = {
+  plugins: { legend: { display: false } },
+  animation: { duration: 800 }
+};
+
+new Chart(document.getElementById('pieChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['บก.ทท. 14', 'ทบ. 25', 'ทร. 5', 'ทอ. 10'],
+    datasets: [{ data: [14, 25, 5, 10], backgroundColor: ['#00d4ff','#00c896','#f5a623','#ff4d6d'], borderWidth: 0, hoverOffset: 4 }]
+  },
+  options: { responsive: true, maintainAspectRatio: false, cutout: '68%', ...chartDefaults }
+});
+
+new Chart(document.getElementById('budgetChart'), {
+  type: 'bar',
+  data: {
+    labels: ['ยก.', 'สส.', 'ผท.', 'ยบ.', 'นซบ.', 'นทพ.'],
+    datasets: [{ data: [120, 1086, 370, 26, 62, 94], backgroundColor: ['#00d4ff','#00b8e6','#0099cc','#007aaa','#005c88','#003e66'], borderRadius: 5, borderWidth: 0 }]
+  },
+  options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#566a8a', font: { size: 11 } } }, x: { grid: { display: false }, ticks: { color: '#8a9bb8', font: { size: 11 } } } }, ...chartDefaults }
+});
+
+new Chart(document.getElementById('statusChart'), {
+  type: 'bar',
+  data: {
+    labels: ['บริหารสัญญา', 'อนุมัติแล้ว', 'ระหว่างดำเนิน', 'รอ TOR/DCIO'],
+    datasets: [{ data: [1, 1, 5, 5], backgroundColor: ['#00c896','#00d4ff','#f5a623','#ff4d6d'], borderRadius: 5, borderWidth: 0 }]
+  },
+  options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#566a8a', stepSize: 2 } }, x: { grid: { display: false }, ticks: { color: '#8a9bb8', font: { size: 11 } } } }, ...chartDefaults }
+});
+
+new Chart(document.getElementById('unitBudgetChart'), {
+  type: 'bar', indexAxis: 'y',
+  data: {
+    labels: ['ยก.ทหาร', 'สส.ทหาร', 'ผท.ทหาร', 'ยบ.ทหาร', 'นซบ.ทหาร', 'นทพ.'],
+    datasets: [{ data: [120, 1086, 370, 26, 62, 94], backgroundColor: '#00d4ff', borderRadius: 4, borderWidth: 0 }]
+  },
+  options: { responsive: true, maintainAspectRatio: false, scales: { x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#566a8a', font: { size: 11 } } }, y: { grid: { display: false }, ticks: { color: '#8a9bb8', font: { size: 12 } } } }, ...chartDefaults }
+});
+
+new Chart(document.getElementById('authChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['ผบ.ทสส. 23 รายการ', 'ปล.กห. 2 รายการ'],
+    datasets: [{ data: [23, 2], backgroundColor: ['#00d4ff', '#f5a623'], borderWidth: 0 }]
+  },
+  options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { display: true, position: 'bottom', labels: { color: '#8a9bb8', font: { size: 12 }, padding: 16, usePointStyle: true } } }, animation: { duration: 800 } }
+});
+</script>
+</body>
+</html>
