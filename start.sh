@@ -1,3 +1,7 @@
 #!/bin/bash
-playwright install chromium --with-deps
 python bot.py
+```
+
+และ `Procfile` เป็น:
+```
+worker: python bot.py
