@@ -161,7 +161,7 @@ def build_dashboard_image(data=None):
     plt.close()
     return buf
 
-# ===== Command Handlers =====
+# ===== Handlers =====
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg = (
         "สวัสดีครับ Bot จัดซื้อจัดจ้าง กบ.ทหาร\n\n"
@@ -174,9 +174,12 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/status - สรุปสถานะงาน\n"
         "/yearly - สรุปแยกปีงบประมาณ\n\n"
         "ค้นหาข้อมูล:\n"
-        "/หน่วย [ชื่อ] - ค้นหางานของหน่วย\n"
-        "/ค้นหา [คำ] - ค้นหาจากชื่องาน\n"
-        "/งาน [เลขที่] - ดูรายละเอียดงาน\n\n"
+        "/find_unit [ชื่อหน่วย] - ค้นหางานของหน่วย\n"
+        "  เช่น /find_unit ยก.ทหาร\n"
+        "/search [คำ] - ค้นหาจากชื่องาน\n"
+        "  เช่น /search ไมโครเวฟ\n"
+        "/job [เลขที่] - ดูรายละเอียดงาน\n"
+        "  เช่น /job 11\n\n"
         "หรือพิมพ์ถามได้เลยครับ"
     )
     await update.message.reply_text(msg)
@@ -221,7 +224,7 @@ async def cmd_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for u, c in unit_count.most_common():
         b = unit_budget.get(u, 0)
         msg += f"{u}\n   จำนวนงาน: {c} รายการ\n   วงเงิน: {b/1e6:,.1f} ล้านบาท\n\n"
-    msg += "พิมพ์ /หน่วย [ชื่อ] เพื่อดูรายละเอียดครับ"
+    msg += "ดูรายละเอียด: /find_unit [ชื่อหน่วย]"
     await update.message.reply_text(msg)
 
 async def cmd_budget(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -281,10 +284,10 @@ async def cmd_yearly(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         msg += f"  - วงเงิน: {d['budget']/1e6:,.1f} ล้านบาท\n\n"
     await update.message.reply_text(msg)
 
-async def cmd_search_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def cmd_find_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     args = ctx.args
     if not args:
-        await update.message.reply_text("กรุณาระบุชื่อหน่วยครับ\nเช่น /หน่วย ยก.ทหาร")
+        await update.message.reply_text("กรุณาระบุชื่อหน่วยครับ\nเช่น /find_unit ยก.ทหาร")
         return
     keyword = ' '.join(args).lower()
     data    = load_data()
@@ -307,7 +310,7 @@ async def cmd_search_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_search(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     args = ctx.args
     if not args:
-        await update.message.reply_text("กรุณาระบุคำค้นหาครับ\nเช่น /ค้นหา ไมโครเวฟ")
+        await update.message.reply_text("กรุณาระบุคำค้นหาครับ\nเช่น /search ไมโครเวฟ")
         return
     keyword = ' '.join(args).lower()
     data    = load_data()
@@ -324,10 +327,10 @@ async def cmd_search(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         msg += f"... และอีก {len(found)-8} รายการ"
     await update.message.reply_text(msg)
 
-async def cmd_job_detail(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def cmd_job(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     args = ctx.args
     if not args:
-        await update.message.reply_text("กรุณาระบุเลขที่งานครับ\nเช่น /งาน 11")
+        await update.message.reply_text("กรุณาระบุเลขที่งานครับ\nเช่น /job 11")
         return
     no    = args[0]
     data  = load_data()
@@ -381,14 +384,14 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 msg += f"- [{r['no']}] {r['unit']} - {r['name'][:45]}\n"
                 msg += f"  วงเงิน: {r['budget']/1e6:,.1f} ลบ. | {r['status']}\n\n"
             if len(found) > 5:
-                msg += f"... และอีก {len(found)-5} รายการ\nใช้ /ค้นหา [คำ] เพื่อดูทั้งหมด"
+                msg += f"... และอีก {len(found)-5} รายการ\nใช้ /search [คำ] เพื่อดูทั้งหมด"
             await update.message.reply_text(msg)
         else:
             await update.message.reply_text(
                 "ไม่เข้าใจคำถามครับ ลองพิมพ์:\n"
                 "/report /dashboard /urgent\n"
                 "/unit /budget /status /yearly\n"
-                "/หน่วย [ชื่อ] /ค้นหา [คำ] /งาน [เลขที่]"
+                "/find_unit [ชื่อ] /search [คำ] /job [เลขที่]"
             )
 
 async def send_daily_report(ctx: ContextTypes.DEFAULT_TYPE):
@@ -426,18 +429,18 @@ async def check_urgent_alert(ctx: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start",     start))
-    app.add_handler(CommandHandler("help",      start))
-    app.add_handler(CommandHandler("report",    cmd_report))
-    app.add_handler(CommandHandler("dashboard", cmd_dashboard))
-    app.add_handler(CommandHandler("urgent",    cmd_urgent))
-    app.add_handler(CommandHandler("unit",      cmd_unit))
-    app.add_handler(CommandHandler("budget",    cmd_budget))
-    app.add_handler(CommandHandler("status",    cmd_status))
-    app.add_handler(CommandHandler("yearly",    cmd_yearly))
-    app.add_handler(CommandHandler("หน่วย",     cmd_search_unit))
-    app.add_handler(CommandHandler("ค้นหา",     cmd_search))
-    app.add_handler(CommandHandler("งาน",       cmd_job_detail))
+    app.add_handler(CommandHandler("start",      start))
+    app.add_handler(CommandHandler("help",       start))
+    app.add_handler(CommandHandler("report",     cmd_report))
+    app.add_handler(CommandHandler("dashboard",  cmd_dashboard))
+    app.add_handler(CommandHandler("urgent",     cmd_urgent))
+    app.add_handler(CommandHandler("unit",       cmd_unit))
+    app.add_handler(CommandHandler("budget",     cmd_budget))
+    app.add_handler(CommandHandler("status",     cmd_status))
+    app.add_handler(CommandHandler("yearly",     cmd_yearly))
+    app.add_handler(CommandHandler("find_unit",  cmd_find_unit))
+    app.add_handler(CommandHandler("search",     cmd_search))
+    app.add_handler(CommandHandler("job",        cmd_job))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.job_queue.run_daily(send_daily_report,  time=time(hour=8,  minute=0))
     app.job_queue.run_daily(send_weekly_report, time=time(hour=7,  minute=30), days=(0,))
