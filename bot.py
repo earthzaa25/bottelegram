@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.font_manager as fm
 import urllib.request
 import urllib.parse
 
@@ -18,6 +19,29 @@ CHAT_ID        = os.environ.get("CHAT_ID", "-1003777924772")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 SHEET_ID       = "1Kl5GnDGjmk7Fc93t-G3wNdiO1mBlpGVnP8Bm6Z6ej3A"
 SHEET_NAME     = "รายการจัดซื้อจัดจ้าง"
+
+# ==============================
+# ตั้งค่าฟอนต์ภาษาไทย
+# ==============================
+FONT_PATH = os.path.join(os.path.dirname(__file__), "Sarabun-Regular.ttf")
+THAI_FONT = None
+
+def get_thai_font(size=10):
+    global THAI_FONT
+    if os.path.exists(FONT_PATH):
+        return fm.FontProperties(fname=FONT_PATH, size=size)
+    return fm.FontProperties(size=size)
+
+def setup_font():
+    if os.path.exists(FONT_PATH):
+        fm.fontManager.addfont(FONT_PATH)
+        prop = fm.FontProperties(fname=FONT_PATH)
+        matplotlib.rcParams['font.family'] = prop.get_name()
+        logger.info(f"Thai font loaded: {prop.get_name()}")
+    else:
+        logger.warning("Thai font not found, using default")
+
+setup_font()
 
 # ==============================
 # ดึงข้อมูลจาก Google Sheets
@@ -119,7 +143,7 @@ def data_to_text(data):
     return "\n".join(lines)
 
 # ==============================
-# Gemini AI (gemini-2.0-flash)
+# Gemini AI
 # ==============================
 def ask_gemini(prompt, data=None):
     if not GEMINI_API_KEY:
@@ -128,22 +152,18 @@ def ask_gemini(prompt, data=None):
         context = ""
         if data:
             context = f"\n\nข้อมูลจัดซื้อจัดจ้าง กบ.ทหาร:\n{data_to_text(data)}\n\n"
-
         full_prompt = (
             "คุณเป็น AI ผู้ช่วยวิเคราะห์งานจัดซื้อจัดจ้างของ กบ.ทหาร "
-            "(กรมการจัดหาทหาร กองบัญชาการกองทัพไทย) "
             "ตอบเป็นภาษาไทย กระชับ ชัดเจน เหมาะสำหรับผู้บริหารระดับสูง"
             f"{context}"
             f"คำถาม: {prompt}"
         )
-
         payload = json.dumps({
             "contents": [{"parts": [{"text": full_prompt}]}],
             "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024}
         }).encode("utf-8")
-
         url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            "https://generativelanguage.googleapis.com/v1beta/models/"
             f"gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
         )
         req = urllib.request.Request(
@@ -158,17 +178,25 @@ def ask_gemini(prompt, data=None):
         return f"Gemini ตอบไม่ได้ตอนนี้ครับ ({e})"
 
 # ==============================
-# Dashboard Image
+# Dashboard Image (พร้อมฟอนต์ไทย)
 # ==============================
 def build_dashboard_image(data=None):
     if data is None:
         data = load_data()
     total, budget, units, urgent = get_summary(data)
+    fp = get_thai_font()
 
     fig = plt.figure(figsize=(14, 9), facecolor="#0a1628")
-    fig.suptitle("Dashboard จัดซื้อจัดจ้าง กบ.ทหาร",
-                 fontsize=18, color="white", fontweight="bold", y=0.98)
 
+    # Title
+    fig.text(0.5, 0.97, "Dashboard จัดซื้อจัดจ้าง กบ.ทหาร",
+             ha="center", va="top", color="white", fontsize=18,
+             fontweight="bold", fontproperties=get_thai_font(18))
+    fig.text(0.5, 0.93, f"ข้อมูล ณ {datetime.now().strftime('%d/%m/%Y')}  |  กบ.ทหาร",
+             ha="center", va="top", color="#8a9bb8", fontsize=10,
+             fontproperties=get_thai_font(10))
+
+    # KPI cards
     kpi_data = [
         ("งานทั้งหมด", f"{total}", "#00d4ff"),
         ("วงเงินรวม", f"{budget/1e6:,.0f} ลบ.", "#f5a623"),
@@ -176,32 +204,38 @@ def build_dashboard_image(data=None):
         ("หน่วยงาน", f"{len(units)}", "#00c896"),
     ]
     for i, (label, val, color) in enumerate(kpi_data):
-        ax = fig.add_axes([0.04 + i*0.245, 0.78, 0.22, 0.14])
+        ax = fig.add_axes([0.04 + i*0.245, 0.76, 0.22, 0.14])
         ax.set_facecolor("#0f2044")
         ax.set_xlim(0, 1); ax.set_ylim(0, 1)
         ax.axhline(y=1, color=color, linewidth=4)
-        ax.text(0.5, 0.62, val, ha="center", va="center",
-                color=color, fontsize=20, fontweight="bold")
-        ax.text(0.5, 0.2, label, ha="center", va="center",
-                color="#8a9bb8", fontsize=10)
+        ax.text(0.5, 0.60, val, ha="center", va="center",
+                color=color, fontsize=20, fontweight="bold",
+                fontproperties=get_thai_font(20))
+        ax.text(0.5, 0.18, label, ha="center", va="center",
+                color="#8a9bb8", fontproperties=get_thai_font(9))
         ax.axis("off")
 
-    ax1 = fig.add_axes([0.03, 0.30, 0.30, 0.44])
+    # Donut chart
+    ax1 = fig.add_axes([0.03, 0.28, 0.30, 0.44])
     ax1.set_facecolor("#0a1628")
     unit_names = [u for u, c in units.most_common()]
     unit_vals  = [c for u, c in units.most_common()]
     colors = ["#00d4ff","#00c896","#f5a623","#ff4d6d","#a78bfa","#34d399"]
     ax1.pie(unit_vals, colors=colors[:len(unit_vals)], startangle=90,
             wedgeprops=dict(width=0.5))
-    ax1.set_title("สัดส่วนตามหน่วย", color="#8a9bb8", fontsize=11, pad=8)
+    ax1.set_title("สัดส่วนตามหน่วย", color="#8a9bb8", fontsize=11, pad=8,
+                  fontproperties=get_thai_font(11))
     legend = [mpatches.Patch(color=colors[i],
               label=f"{unit_names[i]} ({unit_vals[i]})")
               for i in range(len(unit_names))]
-    ax1.legend(handles=legend, loc="lower center",
-               bbox_to_anchor=(0.5, -0.22), ncol=2, fontsize=8,
-               labelcolor="white", facecolor="#0f2044", edgecolor="none")
+    leg = ax1.legend(handles=legend, loc="lower center",
+                     bbox_to_anchor=(0.5, -0.28), ncol=2, fontsize=8,
+                     labelcolor="white", facecolor="#0f2044", edgecolor="none")
+    for text in leg.get_texts():
+        text.set_fontproperties(get_thai_font(8))
 
-    ax2 = fig.add_axes([0.38, 0.30, 0.58, 0.44])
+    # Bar chart
+    ax2 = fig.add_axes([0.38, 0.28, 0.58, 0.44])
     ax2.set_facecolor("#0f2044")
     unit_budget = {}
     for r in data:
@@ -214,25 +248,28 @@ def build_dashboard_image(data=None):
         ax2.text(bar.get_width() + 5, bar.get_y() + bar.get_height()/2,
                  f"{val:,.0f}", va="center", color="#8a9bb8", fontsize=9)
     ax2.set_facecolor("#0f2044")
-    ax2.tick_params(colors="#8a9bb8", labelsize=10)
+    ax2.tick_params(colors="#8a9bb8", labelsize=9)
+    for label in ax2.get_yticklabels():
+        label.set_fontproperties(get_thai_font(9))
     ax2.spines[:].set_visible(False)
-    ax2.set_title("วงเงินตามหน่วย (ล้านบาท)", color="#8a9bb8", fontsize=11, pad=8)
+    ax2.set_title("วงเงินตามหน่วย (ล้านบาท)", color="#8a9bb8", fontsize=11, pad=8,
+                  fontproperties=get_thai_font(11))
     ax2.set_xlim(0, max(vals) * 1.25)
 
-    ax3 = fig.add_axes([0.03, 0.03, 0.94, 0.22])
+    # Urgent section
+    ax3 = fig.add_axes([0.03, 0.03, 0.94, 0.21])
     ax3.set_facecolor("#0f2044")
     ax3.set_xlim(0, 1); ax3.set_ylim(0, 1); ax3.axis("off")
     ax3.text(0.01, 0.92, "งานต้องติดตามเร่งด่วน",
-             color="#ff4d6d", fontsize=11, fontweight="bold", va="top")
+             color="#ff4d6d", fontsize=11, fontweight="bold", va="top",
+             fontproperties=get_thai_font(11))
     urgent_show = sorted(urgent, key=lambda x: int(x["days"])) if urgent else []
     for i, r in enumerate(urgent_show[:4]):
         color = "#ff4d6d" if i < 2 else "#f5a623"
-        ax3.text(0.01, 0.68 - i*0.17,
-                 f"  - {r['unit']} - {r['name'][:50]} (เหลือ {r['days']} วัน)",
-                 color=color, fontsize=9, va="top")
-    ax3.text(0.98, 0.05,
-             f"ข้อมูล ณ {datetime.now().strftime('%d/%m/%Y')}  |  กบ.ทหาร",
-             color="#3a4a6a", fontsize=9, ha="right", va="bottom")
+        ax3.text(0.01, 0.70 - i*0.18,
+                 f"  - {r['unit']} - {r['name'][:55]} (เหลือ {r['days']} วัน)",
+                 color=color, fontsize=9, va="top",
+                 fontproperties=get_thai_font(9))
 
     buf = io.BytesIO()
     plt.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="#0a1628")
@@ -465,7 +502,6 @@ async def cmd_job(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.lower().strip()
     data = load_data()
-
     if any(w in text for w in ["dashboard", "กราฟ", "ภาพ", "รูป"]):
         await cmd_dashboard(update, ctx)
     elif any(w in text for w in ["รายงาน", "สรุป", "report"]):
@@ -549,7 +585,7 @@ def main():
     app.job_queue.run_daily(send_daily_report,  time=time(hour=8,  minute=0))
     app.job_queue.run_daily(send_weekly_report, time=time(hour=7,  minute=30), days=(0,))
     app.job_queue.run_daily(check_urgent_alert, time=time(hour=8,  minute=30))
-    logger.info("Bot started with Gemini AI + Google Sheets!")
+    logger.info("Bot started with Thai font + Gemini AI + Google Sheets!")
     app.run_polling()
 
 if __name__ == "__main__":
