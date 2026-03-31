@@ -1,4 +1,4 @@
-import os, logging, io, json, re
+import os, logging, io, json
 from datetime import datetime, time
 from collections import Counter
 from telegram import Update
@@ -13,11 +13,11 @@ import urllib.parse
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN     = os.environ.get("BOT_TOKEN", "")
-CHAT_ID       = os.environ.get("CHAT_ID", "-1003777924772")
+BOT_TOKEN      = os.environ.get("BOT_TOKEN", "")
+CHAT_ID        = os.environ.get("CHAT_ID", "-1003777924772")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-SHEET_ID      = "1Kl5GnDGjmk7Fc93t-G3wNdiO1mBlpGVnP8Bm6Z6ej3A"
-SHEET_NAME    = "รายการจัดซื้อจัดจ้าง"
+SHEET_ID       = "1Kl5GnDGjmk7Fc93t-G3wNdiO1mBlpGVnP8Bm6Z6ej3A"
+SHEET_NAME     = "รายการจัดซื้อจัดจ้าง"
 
 # ==============================
 # ดึงข้อมูลจาก Google Sheets
@@ -32,10 +32,10 @@ def load_data():
 
         rows = []
         lines = raw.strip().split("\n")
-        for line in lines[1:]:  # skip header
+        for line in lines[1:]:
             cols = line.split('","')
             cols = [c.strip('"').strip() for c in cols]
-            if len(cols) < 10:
+            if len(cols) < 8:
                 continue
             try:
                 no     = cols[0]
@@ -49,10 +49,8 @@ def load_data():
                 budget = float(budget_str) if budget_str else 0
                 status = cols[9] if len(cols) > 9 else ""
                 days   = cols[10] if len(cols) > 10 else ""
-
                 if not no or not name:
                     continue
-
                 rows.append({
                     "no": no, "year": year, "unit": unit,
                     "type": typ, "name": name, "method": method,
@@ -63,7 +61,7 @@ def load_data():
                 logger.warning(f"Row parse error: {e}")
                 continue
         logger.info(f"Loaded {len(rows)} rows from Sheets")
-        return rows
+        return rows if rows else get_fallback_data()
     except Exception as e:
         logger.error(f"Sheets load error: {e}")
         return get_fallback_data()
@@ -78,6 +76,8 @@ def get_fallback_data():
         {"no":"6","year":"2568พ","unit":"ผท.ทหาร","type":"จัดซื้อ","name":"เครื่องมือระบบประมวลผลจัดทำแผนที่ กลุ่มจังหวัดที่ 1","method":"-","auth":"ผบ.ทสส.","budget":55550000,"status":"บริหารสัญญา งวดที่ 1","days":"2"},
         {"no":"7","year":"2568พ","unit":"ผท.ทหาร","type":"จัดซื้อ","name":"เครื่องมือสำรวจข้อมูลภูมิประเทศ ปี 2568","method":"-","auth":"ผบ.ทสส.","budget":20750000,"status":"บริหารสัญญา งวดที่ 1","days":"26"},
         {"no":"8","year":"2568พ","unit":"ผท.ทหาร","type":"จัดซื้อ","name":"เครื่องมือทำแผนที่สามมิติ ปี 2568","method":"-","auth":"ผบ.ทสส.","budget":21980000,"status":"บริหารสัญญา","days":"47"},
+        {"no":"9","year":"2568พ","unit":"ผท.ทหาร","type":"จัดเช่า","name":"เช่าเครื่องบินถ่ายภาพทางอากาศ กลุ่มจังหวัดที่ 1","method":"-","auth":"ผบ.ทสส.","budget":128440000,"status":"ตรวจรับ/บริหารสัญญา","days":""},
+        {"no":"10","year":"2568พ","unit":"ผท.ทหาร","type":"จัดเช่า","name":"เช่าเครื่องมือถ่ายภาพทางอากาศ ปี 2568","method":"-","auth":"ผบ.ทสส.","budget":69980000,"status":"ตรวจรับ/บริหารสัญญา","days":""},
         {"no":"11","year":"2568พ","unit":"สส.ทหาร","type":"จัดซื้อ","name":"ชุดวิทยุไมโครเวฟ IP ภาคตะวันออกเฉียงเหนือและภาคเหนือตอนล่าง","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":98570000,"status":"บริหารสัญญา","days":"193"},
         {"no":"12","year":"2568พ","unit":"สส.ทหาร","type":"จัดซื้อ","name":"ชุดไมโครเวฟ ภาคกลางและภาคเหนือตอนบน","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":96880000,"status":"บริหารสัญญา","days":"193"},
         {"no":"13","year":"2568พ","unit":"สส.ทหาร","type":"จัดซื้อ","name":"ชุดไมโครเวฟ ภาคใต้","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":99220000,"status":"บริหารสัญญา","days":"193"},
@@ -111,13 +111,15 @@ def data_to_text(data):
     lines.append(f"งานทั้งหมด: {total} รายการ | วงเงินรวม: {budget/1e6:,.1f} ล้านบาท")
     lines.append("")
     for r in data:
-        lines.append(f"[{r['no']}] {r['unit']} | {r['name'][:60]} | "
-                     f"วงเงิน {r['budget']/1e6:,.1f} ลบ. | "
-                     f"สถานะ: {r['status']} | เหลือ: {r['days']} วัน")
+        lines.append(
+            f"[{r['no']}] {r['unit']} | {r['name'][:60]} | "
+            f"วงเงิน {r['budget']/1e6:,.1f} ลบ. | "
+            f"สถานะ: {r['status']} | เหลือ: {r['days']} วัน"
+        )
     return "\n".join(lines)
 
 # ==============================
-# Gemini AI
+# Gemini AI (gemini-2.0-flash)
 # ==============================
 def ask_gemini(prompt, data=None):
     if not GEMINI_API_KEY:
@@ -128,7 +130,8 @@ def ask_gemini(prompt, data=None):
             context = f"\n\nข้อมูลจัดซื้อจัดจ้าง กบ.ทหาร:\n{data_to_text(data)}\n\n"
 
         full_prompt = (
-            "คุณเป็น AI ผู้ช่วยวิเคราะห์งานจัดซื้อจัดจ้างของ กบ.ทหาร (กรมการจัดหาทหาร กองบัญชาการกองทัพไทย) "
+            "คุณเป็น AI ผู้ช่วยวิเคราะห์งานจัดซื้อจัดจ้างของ กบ.ทหาร "
+            "(กรมการจัดหาทหาร กองบัญชาการกองทัพไทย) "
             "ตอบเป็นภาษาไทย กระชับ ชัดเจน เหมาะสำหรับผู้บริหารระดับสูง"
             f"{context}"
             f"คำถาม: {prompt}"
@@ -139,8 +142,10 @@ def ask_gemini(prompt, data=None):
             "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024}
         }).encode("utf-8")
 
-        url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-               f"gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}")
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+        )
         req = urllib.request.Request(
             url, data=payload,
             headers={"Content-Type": "application/json"}, method="POST"
@@ -262,7 +267,7 @@ def build_report(data=None):
 # ==============================
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg = (
-        "สวัสดีครับ Bot จัดซื้อจัดจ้าง กบ.ทหาร + AI\n\n"
+        "สวัสดีครับ Bot จัดซื้อจัดจ้าง กบ.ทหาร + Gemini AI\n\n"
         "คำสั่งทั้งหมด:\n"
         "/report - รายงานสรุปประจำวัน\n"
         "/dashboard - ภาพ Dashboard\n"
@@ -275,7 +280,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/find_unit [ชื่อ] - ค้นหางานของหน่วย\n"
         "/search [คำ] - ค้นหาจากชื่องาน\n"
         "/job [เลขที่] - ดูรายละเอียดงาน\n\n"
-        "หรือพิมพ์ถามอะไรก็ได้ครับ AI จะตอบให้"
+        "หรือพิมพ์ถามอะไรก็ได้ Gemini AI จะตอบให้ครับ"
     )
     await update.message.reply_text(msg)
 
@@ -298,7 +303,7 @@ async def cmd_dashboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(f"เกิดข้อผิดพลาด: {e}")
 
 async def cmd_ai(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    msg = await update.message.reply_text("AI กำลังวิเคราะห์ข้อมูล รอสักครู่...")
+    msg = await update.message.reply_text("Gemini AI กำลังวิเคราะห์ข้อมูล รอสักครู่...")
     data = load_data()
     total, budget, units, urgent = get_summary(data)
     prompt = (
@@ -308,7 +313,7 @@ async def cmd_ai(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"สรุปประเด็นสำคัญที่ผู้บริหารควรทราบ ข้อเสี่ยง และข้อแนะนำ"
     )
     reply = ask_gemini(prompt, data)
-    await msg.edit_text(f"AI วิเคราะห์:\n\n{reply}")
+    await msg.edit_text(f"Gemini AI วิเคราะห์:\n\n{reply}")
 
 async def cmd_urgent(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
@@ -481,8 +486,7 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"งานใกล้ครบกำหนด: {len(urgent)} รายการ"
         )
     else:
-        # ส่งให้ Gemini ตอบ
-        msg = await update.message.reply_text("AI กำลังประมวลผล...")
+        msg = await update.message.reply_text("Gemini AI กำลังประมวลผล...")
         reply = ask_gemini(update.message.text, data)
         await msg.edit_text(reply)
 
