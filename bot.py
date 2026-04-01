@@ -1,4 +1,4 @@
-import os, logging, io, json
+import os, logging, io, json, hashlib
 from datetime import datetime, time
 from collections import Counter
 from telegram import Update
@@ -17,6 +17,7 @@ BOT_TOKEN      = os.environ.get("BOT_TOKEN", "")
 CHAT_ID        = os.environ.get("CHAT_ID", "-1003777924772")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 XLS_FILE       = os.path.join(os.path.dirname(__file__), "data.xls")
+HASH_FILE      = os.path.join(os.path.dirname(__file__), ".data_hash")
 
 # ==============================
 # ฟอนต์ภาษาไทย
@@ -36,6 +37,25 @@ def setup_font():
         logger.info(f"Thai font loaded: {prop.get_name()}")
 
 setup_font()
+
+# ==============================
+# ตรวจจับการเปลี่ยนแปลงไฟล์
+# ==============================
+def get_file_hash():
+    if not os.path.exists(XLS_FILE):
+        return None
+    with open(XLS_FILE, 'rb') as f:
+        return hashlib.md5(f.read()).hexdigest()
+
+def save_hash(h):
+    with open(HASH_FILE, 'w') as f:
+        f.write(h)
+
+def load_hash():
+    if not os.path.exists(HASH_FILE):
+        return None
+    with open(HASH_FILE, 'r') as f:
+        return f.read().strip()
 
 # ==============================
 # โหลดข้อมูลจากไฟล์ XLS
@@ -113,7 +133,7 @@ def data_to_text(data):
     lines.append(f"ข้อมูลจัดซื้อจัดจ้าง กบ.ทหาร ณ {datetime.now().strftime('%d/%m/%Y')}")
     lines.append(f"งานทั้งหมด: {total} รายการ | วงเงินรวม: {budget/1e6:,.1f} ล้านบาท")
     lines.append("")
-    for r in data[:50]:
+    for r in data[:60]:
         lines.append(
             f"[{r['no']}] {r['unit']} | {r['name'][:60]} | "
             f"วงเงิน {r['budget']/1e6:,.1f} ลบ. | สถานะ: {r['status']}"
@@ -171,17 +191,16 @@ def build_dashboard_image(data=None):
              ha="center", va="top", color="#8a9bb8", fontsize=10,
              fontproperties=get_thai_font(10))
 
-    # KPI
-    auth_count = Counter(r["auth"] for r in data)
+    auth_count  = Counter(r["auth"] for r in data)
     auth_budget = {}
     for r in data:
         auth_budget[r["auth"]] = auth_budget.get(r["auth"], 0) + r["budget"]
 
     kpi_data = [
-        ("งานทั้งหมด",        f"{total}",                       "#00d4ff"),
-        ("วงเงินรวม",          f"{budget/1e6:,.0f} ลบ.",         "#f5a623"),
-        ("รอดำเนินการ",        f"{len(pending)}",                "#ff4d6d"),
-        ("หน่วยงาน",           f"{len(units)}",                  "#00c896"),
+        ("งานทั้งหมด",  f"{total}",                 "#00d4ff"),
+        ("วงเงินรวม",   f"{budget/1e6:,.0f} ลบ.",   "#f5a623"),
+        ("รอดำเนินการ", f"{len(pending)}",           "#ff4d6d"),
+        ("หน่วยงาน",    f"{len(units)}",             "#00c896"),
     ]
     for i, (label, val, color) in enumerate(kpi_data):
         ax = fig.add_axes([0.04 + i*0.245, 0.78, 0.22, 0.12])
@@ -195,7 +214,6 @@ def build_dashboard_image(data=None):
                 color="#8a9bb8", fontproperties=get_thai_font(9))
         ax.axis("off")
 
-    # Donut — สัดส่วนตามหน่วย
     ax1 = fig.add_axes([0.03, 0.30, 0.28, 0.44])
     ax1.set_facecolor("#0a1628")
     unit_names = [u for u, c in units.most_common()[:6]]
@@ -214,7 +232,6 @@ def build_dashboard_image(data=None):
     for t in leg1.get_texts():
         t.set_fontproperties(get_thai_font(8))
 
-    # Bar — วงเงินตามหน่วย
     ax2 = fig.add_axes([0.36, 0.30, 0.38, 0.44])
     ax2.set_facecolor("#0f2044")
     unit_budget = {}
@@ -237,7 +254,6 @@ def build_dashboard_image(data=None):
     if vals:
         ax2.set_xlim(0, max(vals) * 1.28)
 
-    # Bar — แยกอำนาจอนุมัติ
     ax3 = fig.add_axes([0.78, 0.30, 0.20, 0.44])
     ax3.set_facecolor("#0f2044")
     auth_items = sorted(auth_budget.items(), key=lambda x: x[1], reverse=True)
@@ -247,7 +263,7 @@ def build_dashboard_image(data=None):
     ax3.barh(a_names, a_vals, color=a_colors[:len(a_names)], alpha=0.85)
     for i, (val, name) in enumerate(zip(a_vals, a_names)):
         cnt = auth_count.get(name, 0)
-        ax3.text(val + 1, i, f"{val:,.0f} ลบ.\n({cnt} งาน)",
+        ax3.text(val + 1, i, f"{val:,.0f}\n({cnt} งาน)",
                  va="center", color="#8a9bb8", fontsize=7)
     ax3.set_facecolor("#0f2044")
     ax3.tick_params(colors="#8a9bb8", labelsize=8)
@@ -259,7 +275,6 @@ def build_dashboard_image(data=None):
     if a_vals:
         ax3.set_xlim(0, max(a_vals) * 1.4)
 
-    # Bottom — งานรอดำเนินการ
     ax4 = fig.add_axes([0.03, 0.03, 0.94, 0.22])
     ax4.set_facecolor("#0f2044")
     ax4.set_xlim(0, 1); ax4.set_ylim(0, 1); ax4.axis("off")
@@ -303,18 +318,23 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg = (
         "สวัสดีครับ Bot จัดซื้อจัดจ้าง กบ.ทหาร + Gemini AI\n\n"
         "คำสั่งทั้งหมด:\n"
-        "/report     - รายงานสรุปประจำวัน\n"
-        "/dashboard  - ภาพ Dashboard\n"
-        "/ai         - AI วิเคราะห์ภาพรวม\n"
-        "/authority  - สรุปตามอำนาจอนุมัติ + รายการงาน\n"
-        "/urgent     - งานรอดำเนินการ\n"
-        "/unit       - สรุปตามหน่วย\n"
-        "/budget     - สรุปวงเงิน\n"
-        "/status     - สรุปสถานะงาน\n"
-        "/yearly     - สรุปแยกปีงบประมาณ\n"
-        "/find_unit [ชื่อ]  - ค้นหางานของหน่วย\n"
-        "/search [คำ]       - ค้นหาจากชื่องาน\n"
-        "/job [เลขที่]       - ดูรายละเอียดงาน\n\n"
+        "/report      - รายงานสรุปประจำวัน\n"
+        "/dashboard   - ภาพ Dashboard\n"
+        "/ai          - AI วิเคราะห์ภาพรวม\n"
+        "/authority   - สรุปตามอำนาจอนุมัติ + รายการงาน\n"
+        "/progress    - Pipeline ความคืบหน้าตามขั้นตอน\n"
+        "/overdue     - งานที่ค้างนานผิดปกติ\n"
+        "/type        - สรุปตามประเภทงาน\n"
+        "/urgent      - งานรอดำเนินการ\n"
+        "/unit        - สรุปตามหน่วย\n"
+        "/budget      - สรุปวงเงิน\n"
+        "/status      - สรุปสถานะงาน\n"
+        "/yearly      - สรุปแยกปีงบประมาณ\n"
+        "/export      - ส่งไฟล์ข้อมูลล่าสุด\n"
+        "/find_unit [ชื่อ]   - ค้นหางานของหน่วย\n"
+        "/search [คำ]        - ค้นหาจากชื่องาน\n"
+        "/job [เลขที่]        - ดูรายละเอียดงาน\n"
+        "/summary [หน่วย]    - AI สรุปเฉพาะหน่วย\n\n"
         "หรือพิมพ์ถามอะไรก็ได้ Gemini AI จะตอบให้ครับ"
     )
     await update.message.reply_text(msg)
@@ -353,10 +373,7 @@ async def cmd_ai(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(f"Gemini AI วิเคราะห์:\n\n{reply}")
 
 async def cmd_authority(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """แสดงสรุปตามอำนาจอนุมัติ พร้อมรายการงานทั้งหมด"""
     data = load_data()
-
-    # จัดกลุ่มตามอำนาจ
     auth_groups = {}
     for r in data:
         a = r["auth"]
@@ -364,15 +381,12 @@ async def cmd_authority(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             auth_groups[a] = []
         auth_groups[a].append(r)
 
-    # ส่งทีละอำนาจ (แยกข้อความเพราะอาจยาวมาก)
     summary = "สรุปตามอำนาจอนุมัติ\n====================\n\n"
     for auth, items in sorted(auth_groups.items(), key=lambda x: len(x[1]), reverse=True):
         total_b = sum(r["budget"] for r in items)
-        summary += f"📌 {auth}\n"
-        summary += f"   จำนวน: {len(items)} รายการ | วงเงิน: {total_b/1e6:,.1f} ล้านบาท\n\n"
+        summary += f"📌 {auth}\n   จำนวน: {len(items)} รายการ | วงเงิน: {total_b/1e6:,.1f} ล้านบาท\n\n"
     await update.message.reply_text(summary)
 
-    # ส่งรายละเอียดแต่ละอำนาจ
     for auth, items in sorted(auth_groups.items(), key=lambda x: len(x[1]), reverse=True):
         total_b = sum(r["budget"] for r in items)
         msg  = f"📋 {auth} — {len(items)} รายการ | {total_b/1e6:,.1f} ล้านบาท\n"
@@ -381,12 +395,168 @@ async def cmd_authority(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             msg += f"[{r['no']}] {r['unit']}\n"
             msg += f"  {r['name'][:55]}\n"
             msg += f"  วงเงิน: {r['budget']/1e6:,.1f} ลบ. | สถานะ: {r['status']}\n\n"
-            # ถ้าข้อความยาวเกิน 3800 ตัว ส่งก่อนแล้วเริ่มใหม่
             if len(msg) > 3800:
                 await update.message.reply_text(msg)
                 msg = f"📋 {auth} (ต่อ)\n--------------------\n\n"
         if msg.strip():
             await update.message.reply_text(msg)
+
+async def cmd_progress(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Pipeline ความคืบหน้าตามขั้นตอน"""
+    data = load_data()
+
+    # นิยามขั้นตอน pipeline
+    stages = [
+        ("เริ่มดำเนินการ / TOR",     ["เริ่มดำเนินการ", "TOR", "ราคากลาง", "อนุมัติแผน"]),
+        ("ประกาศ / ยื่นข้อเสนอ",     ["ประกาศ", "ยื่นข้อเสนอ", "คณก"]),
+        ("รออนุมัติซื้อจ้าง",         ["รายงานขออนุมัติ", "เห็นชอบผล", "รอง ผบ", "เสนอ"]),
+        ("อนุมัติแล้ว / รอลงนาม",    ["อนุมัติ"]),
+        ("ลงนามสัญญา / บริหาร",      ["ลงนาม", "บริหารสัญญา", "ตรวจรับ"]),
+    ]
+
+    stage_data = {s[0]: [] for s in stages}
+    other = []
+
+    for r in data:
+        placed = False
+        for stage_name, keywords in stages:
+            if any(kw in r["status"] for kw in keywords):
+                stage_data[stage_name].append(r)
+                placed = True
+                break
+        if not placed:
+            other.append(r)
+
+    msg = "Pipeline ความคืบหน้างานจัดซื้อจัดจ้าง\n====================\n\n"
+    icons = ["🟡", "🟠", "🔵", "🟣", "🟢"]
+    for i, (stage_name, _) in enumerate(stages):
+        items = stage_data[stage_name]
+        total_b = sum(r["budget"] for r in items)
+        icon = icons[i]
+        msg += f"{icon} {stage_name}\n"
+        msg += f"   {len(items)} รายการ | {total_b/1e6:,.1f} ล้านบาท\n"
+        for r in items[:3]:
+            msg += f"   - [{r['no']}] {r['unit']} — {r['name'][:40]}\n"
+        if len(items) > 3:
+            msg += f"   ... และอีก {len(items)-3} รายการ\n"
+        msg += "\n"
+
+    if other:
+        msg += f"⚪ อื่นๆ: {len(other)} รายการ\n"
+
+    await update.message.reply_text(msg)
+
+async def cmd_overdue(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """งานที่ค้างอยู่ในขั้นตอนต้นๆ นานผิดปกติ"""
+    data = load_data()
+
+    early_stages = ["เริ่มดำเนินการ", "TOR", "ราคากลาง", "อนุมัติแผน"]
+    overdue = [r for r in data if any(kw in r["status"] for kw in early_stages)]
+
+    msg = f"งานที่ค้างอยู่ในขั้นตอนต้น ({len(overdue)} รายการ)\n"
+    msg += "ควรเร่งรัดดำเนินการ\n"
+    msg += "--------------------\n\n"
+
+    if overdue:
+        # จัดกลุ่มตามสถานะ
+        by_status = {}
+        for r in overdue:
+            s = r["status"]
+            if s not in by_status:
+                by_status[s] = []
+            by_status[s].append(r)
+
+        for s, items in sorted(by_status.items(), key=lambda x: len(x[1]), reverse=True):
+            total_b = sum(r["budget"] for r in items)
+            msg += f"🔴 สถานะ: {s}\n"
+            msg += f"   {len(items)} รายการ | {total_b/1e6:,.1f} ล้านบาท\n"
+            for r in items[:5]:
+                msg += f"   [{r['no']}] {r['unit']} — {r['name'][:40]}\n"
+                msg += f"   วงเงิน: {r['budget']/1e6:,.1f} ลบ.\n"
+            if len(items) > 5:
+                msg += f"   ... และอีก {len(items)-5} รายการ\n"
+            msg += "\n"
+            if len(msg) > 3800:
+                await update.message.reply_text(msg)
+                msg = "งานค้าง (ต่อ)\n--------------------\n\n"
+    else:
+        msg += "ไม่มีงานที่ค้างในขั้นตอนต้นครับ"
+
+    if msg.strip():
+        await update.message.reply_text(msg)
+
+async def cmd_type(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """สรุปตามประเภทงาน"""
+    data = load_data()
+
+    type_groups = {}
+    for r in data:
+        t = r["type"] if r["type"] not in ['nan', ''] else "ไม่ระบุ"
+        if t not in type_groups:
+            type_groups[t] = {"count": 0, "budget": 0, "items": []}
+        type_groups[t]["count"] += 1
+        type_groups[t]["budget"] += r["budget"]
+        type_groups[t]["items"].append(r)
+
+    total_b = sum(r["budget"] for r in data)
+    msg = "สรุปตามประเภทงาน\n--------------------\n\n"
+
+    for t, d in sorted(type_groups.items(), key=lambda x: x[1]["budget"], reverse=True):
+        pct = d["budget"] / total_b * 100 if total_b else 0
+        msg += f"📦 {t}\n"
+        msg += f"   จำนวน: {d['count']} รายการ\n"
+        msg += f"   วงเงิน: {d['budget']/1e6:,.1f} ล้านบาท ({pct:.1f}%)\n\n"
+
+    await update.message.reply_text(msg)
+
+async def cmd_export(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """ส่งไฟล์ data.xls กลับมาใน Telegram"""
+    if not os.path.exists(XLS_FILE):
+        await update.message.reply_text("ไม่พบไฟล์ข้อมูลครับ")
+        return
+    msg = await update.message.reply_text("กำลังส่งไฟล์...")
+    try:
+        with open(XLS_FILE, 'rb') as f:
+            today = datetime.now().strftime("%d%m%Y")
+            await update.message.reply_document(
+                document=f,
+                filename=f"รายการจัดซื้อจัดจ้าง_กบ.ทหาร_{today}.xls",
+                caption=f"📎 ไฟล์ข้อมูลจัดซื้อจัดจ้าง กบ.ทหาร\nข้อมูล ณ {datetime.now().strftime('%d/%m/%Y %H:%M น.')}"
+            )
+        await msg.delete()
+    except Exception as e:
+        await msg.edit_text(f"ส่งไฟล์ไม่ได้ครับ: {e}")
+
+async def cmd_summary_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """AI สรุปเฉพาะหน่วย"""
+    args = ctx.args
+    if not args:
+        await update.message.reply_text(
+            "กรุณาระบุชื่อหน่วยครับ\nเช่น /summary นซบ.ทหาร"
+        )
+        return
+    keyword  = " ".join(args).lower()
+    data     = load_data()
+    found    = [r for r in data if keyword in r["unit"].lower()]
+    if not found:
+        await update.message.reply_text(f"ไม่พบหน่วย '{' '.join(args)}' ครับ")
+        return
+
+    unit_name = found[0]["unit"]
+    total_b   = sum(r["budget"] for r in found)
+    msg = await update.message.reply_text(f"Gemini AI กำลังวิเคราะห์งานของ {unit_name}...")
+
+    pending = [r for r in found if not any(
+        w in r["status"] for w in ["บริหารสัญญา", "ตรวจรับ", "ลงนาม"]
+    )]
+    prompt = (
+        f"วิเคราะห์งานจัดซื้อจัดจ้างของหน่วย {unit_name} "
+        f"มีงานทั้งหมด {len(found)} รายการ วงเงินรวม {total_b/1e6:,.1f} ล้านบาท "
+        f"รอดำเนินการ {len(pending)} รายการ "
+        f"สรุปสถานะ ความเสี่ยง และข้อแนะนำสำหรับผู้บริหาร"
+    )
+    reply = ask_gemini(prompt, found)
+    await msg.edit_text(f"AI วิเคราะห์งาน {unit_name}:\n\n{reply}")
 
 async def cmd_urgent(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
@@ -400,7 +570,7 @@ async def cmd_urgent(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(msg)
                 msg = "งานที่รอดำเนินการ (ต่อ)\n--------------------\n\n"
         if len(pending) > 20:
-            msg += f"... และอีก {len(pending)-20} รายการ\nใช้ /search หรือ /find_unit เพื่อค้นหาเพิ่มเติม"
+            msg += f"... และอีก {len(pending)-20} รายการ"
     else:
         msg += "ไม่มีงานที่รอดำเนินการครับ"
     if msg.strip():
@@ -416,7 +586,7 @@ async def cmd_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for u, c in unit_count.most_common():
         b = unit_budget.get(u, 0)
         msg += f"{u}  ({c} รายการ | {b/1e6:,.1f} ลบ.)\n"
-    msg += "\nดูรายละเอียด: /find_unit [ชื่อหน่วย]"
+    msg += "\nดูรายละเอียด: /find_unit [ชื่อหน่วย]\nAI วิเคราะห์: /summary [ชื่อหน่วย]"
     await update.message.reply_text(msg)
 
 async def cmd_budget(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -557,6 +727,12 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await cmd_dashboard(update, ctx)
     elif any(w in text for w in ["อำนาจ", "authority"]):
         await cmd_authority(update, ctx)
+    elif any(w in text for w in ["pipeline", "ขั้นตอน", "progress", "คืบหน้า"]):
+        await cmd_progress(update, ctx)
+    elif any(w in text for w in ["ค้างนาน", "overdue", "เร่งรัด"]):
+        await cmd_overdue(update, ctx)
+    elif any(w in text for w in ["ประเภท", "type"]):
+        await cmd_type(update, ctx)
     elif any(w in text for w in ["รายงาน", "สรุป", "report"]):
         await cmd_report(update, ctx)
     elif any(w in text for w in ["รอดำเนินการ", "เร่งด่วน", "ด่วน"]):
@@ -579,6 +755,9 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply = ask_gemini(update.message.text, data)
         await msg.edit_text(reply)
 
+# ==============================
+# Scheduled Jobs
+# ==============================
 async def send_daily_report(ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     await ctx.bot.send_message(chat_id=CHAT_ID, text=build_report(data))
@@ -610,6 +789,81 @@ async def send_weekly_report(ctx: ContextTypes.DEFAULT_TYPE):
         )
     )
 
+async def send_monthly_report(ctx: ContextTypes.DEFAULT_TYPE):
+    """รายงานสิ้นเดือน"""
+    data = load_data()
+    total, budget, units, pending = get_summary(data)
+    now = datetime.now()
+
+    # นับตามอำนาจ
+    auth_groups = {}
+    for r in data:
+        a = r["auth"]
+        if a not in auth_groups:
+            auth_groups[a] = {"count": 0, "budget": 0}
+        auth_groups[a]["count"] += 1
+        auth_groups[a]["budget"] += r["budget"]
+
+    prompt = (
+        f"สรุปรายงานประจำเดือน {now.strftime('%B %Y')} งานจัดซื้อจัดจ้าง กบ.ทหาร "
+        f"งานทั้งหมด {total} รายการ วงเงิน {budget/1e6:,.1f} ล้านบาท "
+        f"รอดำเนินการ {len(pending)} รายการ "
+        f"วิเคราะห์ภาพรวม ความคืบหน้า ความเสี่ยง และข้อเสนอแนะสำหรับเดือนหน้า ไม่เกิน 10 บรรทัด"
+    )
+    ai_summary = ask_gemini(prompt, data)
+
+    auth_lines = "\n".join([
+        f"  - {a}: {d['count']} งาน | {d['budget']/1e6:,.1f} ลบ."
+        for a, d in sorted(auth_groups.items(), key=lambda x: x[1]["budget"], reverse=True)
+    ])
+
+    msg = (
+        f"รายงานสิ้นเดือน กบ.ทหาร\n"
+        f"ประจำเดือน {now.strftime('%B %Y')}\n"
+        f"====================\n\n"
+        f"งานทั้งหมด: {total} รายการ\n"
+        f"วงเงินรวม: {budget/1e6:,.1f} ล้านบาท\n"
+        f"รอดำเนินการ: {len(pending)} รายการ\n\n"
+        f"แยกตามอำนาจ:\n{auth_lines}\n\n"
+        f"AI วิเคราะห์:\n{ai_summary}\n\n"
+        f"#กบทหาร #รายงานสิ้นเดือน"
+    )
+    await ctx.bot.send_message(chat_id=CHAT_ID, text=msg)
+    # ส่ง Dashboard ด้วย
+    try:
+        buf = build_dashboard_image(data)
+        await ctx.bot.send_photo(
+            chat_id=CHAT_ID, photo=buf,
+            caption=f"Dashboard สิ้นเดือน {now.strftime('%B %Y')}"
+        )
+    except Exception as e:
+        logger.error(f"Monthly dashboard error: {e}")
+
+async def check_file_update(ctx: ContextTypes.DEFAULT_TYPE):
+    """แจ้งเตือนเมื่อมีการอัปเดตไฟล์ data.xls"""
+    current_hash = get_file_hash()
+    if current_hash is None:
+        return
+    old_hash = load_hash()
+    if old_hash is None:
+        save_hash(current_hash)
+        return
+    if current_hash != old_hash:
+        save_hash(current_hash)
+        data = load_data()
+        total, budget, units, pending = get_summary(data)
+        msg = (
+            f"อัปเดตข้อมูลใหม่!\n"
+            f"ข้อมูล ณ {datetime.now().strftime('%d/%m/%Y %H:%M น.')}\n"
+            f"--------------------\n\n"
+            f"งานทั้งหมด: {total} รายการ\n"
+            f"วงเงินรวม: {budget/1e6:,.1f} ล้านบาท\n"
+            f"รอดำเนินการ: {len(pending)} รายการ\n\n"
+            f"พิมพ์ /dashboard เพื่อดู Dashboard ล่าสุด"
+        )
+        await ctx.bot.send_message(chat_id=CHAT_ID, text=msg)
+        logger.info("File update detected and notified")
+
 async def check_urgent_alert(ctx: ContextTypes.DEFAULT_TYPE):
     data    = load_data()
     pending = [r for r in data if "เริ่มดำเนินการ" in r["status"]]
@@ -627,6 +881,11 @@ def main():
     app.add_handler(CommandHandler("dashboard",  cmd_dashboard))
     app.add_handler(CommandHandler("ai",         cmd_ai))
     app.add_handler(CommandHandler("authority",  cmd_authority))
+    app.add_handler(CommandHandler("progress",   cmd_progress))
+    app.add_handler(CommandHandler("overdue",    cmd_overdue))
+    app.add_handler(CommandHandler("type",       cmd_type))
+    app.add_handler(CommandHandler("export",     cmd_export))
+    app.add_handler(CommandHandler("summary",    cmd_summary_unit))
     app.add_handler(CommandHandler("urgent",     cmd_urgent))
     app.add_handler(CommandHandler("unit",       cmd_unit))
     app.add_handler(CommandHandler("budget",     cmd_budget))
@@ -636,10 +895,19 @@ def main():
     app.add_handler(CommandHandler("search",     cmd_search))
     app.add_handler(CommandHandler("job",        cmd_job))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    # รายงานอัตโนมัติทุกวัน 08:00 น.
     app.job_queue.run_daily(send_daily_report,  time=time(hour=8,  minute=0))
+    # รายงานรายสัปดาห์ทุกวันจันทร์ 07:30 น.
     app.job_queue.run_daily(send_weekly_report, time=time(hour=7,  minute=30), days=(0,))
+    # แจ้งเตือนงานเร่งด่วน 08:30 น.
     app.job_queue.run_daily(check_urgent_alert, time=time(hour=8,  minute=30))
-    logger.info("Bot started!")
+    # รายงานสิ้นเดือน วันสุดท้ายของเดือน 17:00 น.
+    app.job_queue.run_daily(send_monthly_report, time=time(hour=17, minute=0), days=(0,1,2,3,4,5,6))
+    # ตรวจสอบการอัปเดตไฟล์ทุก 30 นาที
+    app.job_queue.run_repeating(check_file_update, interval=1800, first=60)
+
+    logger.info("Bot started with all features!")
     app.run_polling()
 
 if __name__ == "__main__":
