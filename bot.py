@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.font_manager as fm
 import urllib.request
-import urllib.parse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,9 +16,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN      = os.environ.get("BOT_TOKEN", "")
 CHAT_ID        = os.environ.get("CHAT_ID", "-1003777924772")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-
-# ชื่อไฟล์ XLS ที่อัปโหลดขึ้น GitHub
-XLS_FILE = os.path.join(os.path.dirname(__file__), "data.xls")
+XLS_FILE       = os.path.join(os.path.dirname(__file__), "data.xls")
 
 # ==============================
 # ฟอนต์ภาษาไทย
@@ -37,8 +34,6 @@ def setup_font():
         prop = fm.FontProperties(fname=FONT_PATH)
         matplotlib.rcParams['font.family'] = prop.get_name()
         logger.info(f"Thai font loaded: {prop.get_name()}")
-    else:
-        logger.warning("Thai font not found")
 
 setup_font()
 
@@ -73,12 +68,12 @@ def load_data():
                 typ    = str(r.iloc[4])
                 method = str(r.iloc[5])
                 auth   = str(r.iloc[6])
-                status = str(r.iloc[27]) if len(r) > 27 else ""
                 budget = float(r.iloc[7])
+                status = str(r.iloc[27]) if len(r) > 27 else ""
             except:
                 continue
 
-            if no in ['nan','ลำดับ',''] or name in ['nan','ชื่อโครงการ','']:
+            if no in ['nan', 'ลำดับ', ''] or name in ['nan', 'ชื่อโครงการ', '']:
                 continue
 
             rows.append({
@@ -104,12 +99,11 @@ def load_data():
 def get_summary(data=None):
     if data is None:
         data = load_data()
-    total  = len(data)
-    budget = sum(r["budget"] for r in data)
-    units  = Counter(r["unit"] for r in data)
-    # งานที่ยังไม่เสร็จ
+    total   = len(data)
+    budget  = sum(r["budget"] for r in data)
+    units   = Counter(r["unit"] for r in data)
     pending = [r for r in data if not any(
-        w in r["status"] for w in ["บริหารสัญญา","ตรวจรับ","ลงนาม"]
+        w in r["status"] for w in ["บริหารสัญญา", "ตรวจรับ", "ลงนาม"]
     )]
     return total, budget, units, pending
 
@@ -119,7 +113,7 @@ def data_to_text(data):
     lines.append(f"ข้อมูลจัดซื้อจัดจ้าง กบ.ทหาร ณ {datetime.now().strftime('%d/%m/%Y')}")
     lines.append(f"งานทั้งหมด: {total} รายการ | วงเงินรวม: {budget/1e6:,.1f} ล้านบาท")
     lines.append("")
-    for r in data[:50]:  # จำกัด 50 รายการเพื่อไม่ให้ context ยาวเกินไป
+    for r in data[:50]:
         lines.append(
             f"[{r['no']}] {r['unit']} | {r['name'][:60]} | "
             f"วงเงิน {r['budget']/1e6:,.1f} ลบ. | สถานะ: {r['status']}"
@@ -169,7 +163,7 @@ def build_dashboard_image(data=None):
         data = load_data()
     total, budget, units, pending = get_summary(data)
 
-    fig = plt.figure(figsize=(14, 9), facecolor="#0a1628")
+    fig = plt.figure(figsize=(16, 10), facecolor="#0a1628")
     fig.text(0.5, 0.97, "Dashboard จัดซื้อจัดจ้าง กบ.ทหาร",
              ha="center", va="top", color="white", fontsize=18,
              fontweight="bold", fontproperties=get_thai_font(18))
@@ -178,77 +172,104 @@ def build_dashboard_image(data=None):
              fontproperties=get_thai_font(10))
 
     # KPI
+    auth_count = Counter(r["auth"] for r in data)
+    auth_budget = {}
+    for r in data:
+        auth_budget[r["auth"]] = auth_budget.get(r["auth"], 0) + r["budget"]
+
     kpi_data = [
-        ("งานทั้งหมด", f"{total}", "#00d4ff"),
-        ("วงเงินรวม", f"{budget/1e6:,.0f} ลบ.", "#f5a623"),
-        ("รอดำเนินการ", f"{len(pending)}", "#ff4d6d"),
-        ("หน่วยงาน", f"{len(units)}", "#00c896"),
+        ("งานทั้งหมด",        f"{total}",                       "#00d4ff"),
+        ("วงเงินรวม",          f"{budget/1e6:,.0f} ลบ.",         "#f5a623"),
+        ("รอดำเนินการ",        f"{len(pending)}",                "#ff4d6d"),
+        ("หน่วยงาน",           f"{len(units)}",                  "#00c896"),
     ]
     for i, (label, val, color) in enumerate(kpi_data):
-        ax = fig.add_axes([0.04 + i*0.245, 0.76, 0.22, 0.14])
+        ax = fig.add_axes([0.04 + i*0.245, 0.78, 0.22, 0.12])
         ax.set_facecolor("#0f2044")
         ax.set_xlim(0, 1); ax.set_ylim(0, 1)
         ax.axhline(y=1, color=color, linewidth=4)
-        ax.text(0.5, 0.60, val, ha="center", va="center",
-                color=color, fontsize=20, fontweight="bold",
-                fontproperties=get_thai_font(20))
+        ax.text(0.5, 0.58, val, ha="center", va="center",
+                color=color, fontsize=18, fontweight="bold",
+                fontproperties=get_thai_font(18))
         ax.text(0.5, 0.18, label, ha="center", va="center",
                 color="#8a9bb8", fontproperties=get_thai_font(9))
         ax.axis("off")
 
-    # Donut
-    ax1 = fig.add_axes([0.03, 0.28, 0.30, 0.44])
+    # Donut — สัดส่วนตามหน่วย
+    ax1 = fig.add_axes([0.03, 0.30, 0.28, 0.44])
     ax1.set_facecolor("#0a1628")
     unit_names = [u for u, c in units.most_common()[:6]]
     unit_vals  = [c for u, c in units.most_common()[:6]]
-    colors = ["#00d4ff","#00c896","#f5a623","#ff4d6d","#a78bfa","#34d399"]
-    ax1.pie(unit_vals, colors=colors[:len(unit_vals)], startangle=90,
+    colors6 = ["#00d4ff", "#00c896", "#f5a623", "#ff4d6d", "#a78bfa", "#34d399"]
+    ax1.pie(unit_vals, colors=colors6[:len(unit_vals)], startangle=90,
             wedgeprops=dict(width=0.5))
     ax1.set_title("สัดส่วนตามหน่วย", color="#8a9bb8", fontsize=11, pad=8,
                   fontproperties=get_thai_font(11))
-    legend = [mpatches.Patch(color=colors[i],
-              label=f"{unit_names[i]} ({unit_vals[i]})")
-              for i in range(len(unit_names))]
-    leg = ax1.legend(handles=legend, loc="lower center",
-                     bbox_to_anchor=(0.5, -0.30), ncol=2, fontsize=8,
-                     labelcolor="white", facecolor="#0f2044", edgecolor="none")
-    for text in leg.get_texts():
-        text.set_fontproperties(get_thai_font(8))
+    leg1 = ax1.legend(
+        handles=[mpatches.Patch(color=colors6[i], label=f"{unit_names[i]} ({unit_vals[i]})")
+                 for i in range(len(unit_names))],
+        loc="lower center", bbox_to_anchor=(0.5, -0.30), ncol=2, fontsize=8,
+        labelcolor="white", facecolor="#0f2044", edgecolor="none"
+    )
+    for t in leg1.get_texts():
+        t.set_fontproperties(get_thai_font(8))
 
-    # Bar chart วงเงิน
-    ax2 = fig.add_axes([0.38, 0.28, 0.58, 0.44])
+    # Bar — วงเงินตามหน่วย
+    ax2 = fig.add_axes([0.36, 0.30, 0.38, 0.44])
     ax2.set_facecolor("#0f2044")
     unit_budget = {}
     for r in data:
         unit_budget[r["unit"]] = unit_budget.get(r["unit"], 0) + r["budget"]
-    sorted_u = sorted(unit_budget.items(), key=lambda x: x[1], reverse=True)[:10]
+    sorted_u = sorted(unit_budget.items(), key=lambda x: x[1], reverse=True)[:8]
     names = [x[0] for x in sorted_u]
     vals  = [x[1]/1e6 for x in sorted_u]
     bars  = ax2.barh(names, vals, color="#00d4ff", alpha=0.85)
     for bar, val in zip(bars, vals):
-        ax2.text(bar.get_width() + 2, bar.get_y() + bar.get_height()/2,
-                 f"{val:,.0f}", va="center", color="#8a9bb8", fontsize=9)
+        ax2.text(bar.get_width() + 1, bar.get_y() + bar.get_height()/2,
+                 f"{val:,.0f}", va="center", color="#8a9bb8", fontsize=8)
     ax2.set_facecolor("#0f2044")
-    ax2.tick_params(colors="#8a9bb8", labelsize=9)
-    for label in ax2.get_yticklabels():
-        label.set_fontproperties(get_thai_font(9))
+    ax2.tick_params(colors="#8a9bb8", labelsize=8)
+    for lbl in ax2.get_yticklabels():
+        lbl.set_fontproperties(get_thai_font(8))
     ax2.spines[:].set_visible(False)
-    ax2.set_title("วงเงินตามหน่วย (ล้านบาท)", color="#8a9bb8", fontsize=11, pad=8,
-                  fontproperties=get_thai_font(11))
+    ax2.set_title("วงเงินตามหน่วย (ลบ.)", color="#8a9bb8", fontsize=10, pad=8,
+                  fontproperties=get_thai_font(10))
     if vals:
-        ax2.set_xlim(0, max(vals) * 1.25)
+        ax2.set_xlim(0, max(vals) * 1.28)
 
-    # สถานะงาน (bottom)
-    ax3 = fig.add_axes([0.03, 0.03, 0.94, 0.21])
+    # Bar — แยกอำนาจอนุมัติ
+    ax3 = fig.add_axes([0.78, 0.30, 0.20, 0.44])
     ax3.set_facecolor("#0f2044")
-    ax3.set_xlim(0, 1); ax3.set_ylim(0, 1); ax3.axis("off")
-    ax3.text(0.01, 0.92, "งานที่รอดำเนินการ (ตัวอย่าง)",
+    auth_items = sorted(auth_budget.items(), key=lambda x: x[1], reverse=True)
+    a_names = [x[0] for x in auth_items]
+    a_vals  = [x[1]/1e6 for x in auth_items]
+    a_colors = ["#f5a623", "#00c896", "#00d4ff", "#ff4d6d"]
+    ax3.barh(a_names, a_vals, color=a_colors[:len(a_names)], alpha=0.85)
+    for i, (val, name) in enumerate(zip(a_vals, a_names)):
+        cnt = auth_count.get(name, 0)
+        ax3.text(val + 1, i, f"{val:,.0f} ลบ.\n({cnt} งาน)",
+                 va="center", color="#8a9bb8", fontsize=7)
+    ax3.set_facecolor("#0f2044")
+    ax3.tick_params(colors="#8a9bb8", labelsize=8)
+    for lbl in ax3.get_yticklabels():
+        lbl.set_fontproperties(get_thai_font(8))
+    ax3.spines[:].set_visible(False)
+    ax3.set_title("แยกอำนาจอนุมัติ", color="#8a9bb8", fontsize=10, pad=8,
+                  fontproperties=get_thai_font(10))
+    if a_vals:
+        ax3.set_xlim(0, max(a_vals) * 1.4)
+
+    # Bottom — งานรอดำเนินการ
+    ax4 = fig.add_axes([0.03, 0.03, 0.94, 0.22])
+    ax4.set_facecolor("#0f2044")
+    ax4.set_xlim(0, 1); ax4.set_ylim(0, 1); ax4.axis("off")
+    ax4.text(0.01, 0.92, "งานที่รอดำเนินการ (ตัวอย่าง)",
              color="#ff4d6d", fontsize=11, fontweight="bold", va="top",
              fontproperties=get_thai_font(11))
     for i, r in enumerate(pending[:4]):
         color = "#ff4d6d" if i < 2 else "#f5a623"
-        ax3.text(0.01, 0.70 - i*0.18,
-                 f"  - {r['unit']} — {r['name'][:55]} | {r['status']}",
+        ax4.text(0.01, 0.70 - i*0.17,
+                 f"  [{r['no']}] {r['unit']} — {r['name'][:55]}  |  {r['status']}",
                  color=color, fontsize=9, va="top",
                  fontproperties=get_thai_font(9))
 
@@ -282,17 +303,18 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg = (
         "สวัสดีครับ Bot จัดซื้อจัดจ้าง กบ.ทหาร + Gemini AI\n\n"
         "คำสั่งทั้งหมด:\n"
-        "/report - รายงานสรุปประจำวัน\n"
-        "/dashboard - ภาพ Dashboard\n"
-        "/ai - AI วิเคราะห์ภาพรวม\n"
-        "/urgent - งานรอดำเนินการ\n"
-        "/unit - สรุปตามหน่วย\n"
-        "/budget - สรุปวงเงิน\n"
-        "/status - สรุปสถานะงาน\n"
-        "/yearly - สรุปแยกปีงบประมาณ\n"
-        "/find_unit [ชื่อ] - ค้นหางานของหน่วย\n"
-        "/search [คำ] - ค้นหาจากชื่องาน\n"
-        "/job [เลขที่] - ดูรายละเอียดงาน\n\n"
+        "/report     - รายงานสรุปประจำวัน\n"
+        "/dashboard  - ภาพ Dashboard\n"
+        "/ai         - AI วิเคราะห์ภาพรวม\n"
+        "/authority  - สรุปตามอำนาจอนุมัติ + รายการงาน\n"
+        "/urgent     - งานรอดำเนินการ\n"
+        "/unit       - สรุปตามหน่วย\n"
+        "/budget     - สรุปวงเงิน\n"
+        "/status     - สรุปสถานะงาน\n"
+        "/yearly     - สรุปแยกปีงบประมาณ\n"
+        "/find_unit [ชื่อ]  - ค้นหางานของหน่วย\n"
+        "/search [คำ]       - ค้นหาจากชื่องาน\n"
+        "/job [เลขที่]       - ดูรายละเอียดงาน\n\n"
         "หรือพิมพ์ถามอะไรก็ได้ Gemini AI จะตอบให้ครับ"
     )
     await update.message.reply_text(msg)
@@ -324,26 +346,65 @@ async def cmd_ai(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     total, budget, units, pending = get_summary(data)
     prompt = (
         f"วิเคราะห์ภาพรวมงานจัดซื้อจัดจ้าง กบ.ทหาร ทั้งหมด {total} รายการ "
-        f"วงเงินรวม {budget/1e6:,.1f} ล้านบาท "
-        f"รอดำเนินการ {len(pending)} รายการ "
+        f"วงเงินรวม {budget/1e6:,.1f} ล้านบาท รอดำเนินการ {len(pending)} รายการ "
         f"สรุปประเด็นสำคัญที่ผู้บริหารควรทราบ ข้อเสี่ยง และข้อแนะนำ"
     )
     reply = ask_gemini(prompt, data)
     await msg.edit_text(f"Gemini AI วิเคราะห์:\n\n{reply}")
 
+async def cmd_authority(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """แสดงสรุปตามอำนาจอนุมัติ พร้อมรายการงานทั้งหมด"""
+    data = load_data()
+
+    # จัดกลุ่มตามอำนาจ
+    auth_groups = {}
+    for r in data:
+        a = r["auth"]
+        if a not in auth_groups:
+            auth_groups[a] = []
+        auth_groups[a].append(r)
+
+    # ส่งทีละอำนาจ (แยกข้อความเพราะอาจยาวมาก)
+    summary = "สรุปตามอำนาจอนุมัติ\n====================\n\n"
+    for auth, items in sorted(auth_groups.items(), key=lambda x: len(x[1]), reverse=True):
+        total_b = sum(r["budget"] for r in items)
+        summary += f"📌 {auth}\n"
+        summary += f"   จำนวน: {len(items)} รายการ | วงเงิน: {total_b/1e6:,.1f} ล้านบาท\n\n"
+    await update.message.reply_text(summary)
+
+    # ส่งรายละเอียดแต่ละอำนาจ
+    for auth, items in sorted(auth_groups.items(), key=lambda x: len(x[1]), reverse=True):
+        total_b = sum(r["budget"] for r in items)
+        msg  = f"📋 {auth} — {len(items)} รายการ | {total_b/1e6:,.1f} ล้านบาท\n"
+        msg += "--------------------\n\n"
+        for r in items:
+            msg += f"[{r['no']}] {r['unit']}\n"
+            msg += f"  {r['name'][:55]}\n"
+            msg += f"  วงเงิน: {r['budget']/1e6:,.1f} ลบ. | สถานะ: {r['status']}\n\n"
+            # ถ้าข้อความยาวเกิน 3800 ตัว ส่งก่อนแล้วเริ่มใหม่
+            if len(msg) > 3800:
+                await update.message.reply_text(msg)
+                msg = f"📋 {auth} (ต่อ)\n--------------------\n\n"
+        if msg.strip():
+            await update.message.reply_text(msg)
+
 async def cmd_urgent(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     _, _, _, pending = get_summary(data)
-    msg = "งานที่รอดำเนินการ\n--------------------\n\n"
+    msg = f"งานที่รอดำเนินการ ({len(pending)} รายการ)\n--------------------\n\n"
     if pending:
-        for r in pending[:15]:
-            msg += f"  [{r['no']}] {r['unit']} — {r['name'][:45]}\n"
-            msg += f"    สถานะ: {r['status']} | {r['budget']/1e6:,.1f} ลบ.\n\n"
-        if len(pending) > 15:
-            msg += f"... และอีก {len(pending)-15} รายการ"
+        for r in pending[:20]:
+            msg += f"[{r['no']}] {r['unit']} — {r['name'][:45]}\n"
+            msg += f"  สถานะ: {r['status']} | {r['budget']/1e6:,.1f} ลบ.\n\n"
+            if len(msg) > 3800:
+                await update.message.reply_text(msg)
+                msg = "งานที่รอดำเนินการ (ต่อ)\n--------------------\n\n"
+        if len(pending) > 20:
+            msg += f"... และอีก {len(pending)-20} รายการ\nใช้ /search หรือ /find_unit เพื่อค้นหาเพิ่มเติม"
     else:
         msg += "ไม่มีงานที่รอดำเนินการครับ"
-    await update.message.reply_text(msg)
+    if msg.strip():
+        await update.message.reply_text(msg)
 
 async def cmd_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
@@ -354,24 +415,29 @@ async def cmd_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg = "สรุปตามหน่วย\n--------------------\n\n"
     for u, c in unit_count.most_common():
         b = unit_budget.get(u, 0)
-        msg += f"{u}\n   จำนวนงาน: {c} รายการ | วงเงิน: {b/1e6:,.1f} ล้านบาท\n\n"
-    msg += "ดูรายละเอียด: /find_unit [ชื่อหน่วย]"
+        msg += f"{u}  ({c} รายการ | {b/1e6:,.1f} ลบ.)\n"
+    msg += "\nดูรายละเอียด: /find_unit [ชื่อหน่วย]"
     await update.message.reply_text(msg)
 
 async def cmd_budget(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     total, budget, _, _ = get_summary(data)
-    b_tbtsst = sum(r["budget"] for r in data if r["auth"] == "ผบ.ทสส.")
-    b_plkh   = sum(r["budget"] for r in data if r["auth"] == "ปล.กห.")
+    auth_groups = {}
+    for r in data:
+        a = r["auth"]
+        if a not in auth_groups:
+            auth_groups[a] = {"count": 0, "budget": 0}
+        auth_groups[a]["count"] += 1
+        auth_groups[a]["budget"] += r["budget"]
     msg = (
         f"สรุปวงเงินจัดซื้อจัดจ้าง\n--------------------\n\n"
         f"วงเงินรวม: {budget/1e6:,.1f} ล้านบาท\n"
         f"จำนวนงาน: {total} รายการ\n"
         f"เฉลี่ยต่องาน: {budget/total/1e6:,.1f} ล้านบาท\n\n"
         f"แยกตามอำนาจ:\n"
-        f"  - ผบ.ทสส.: {b_tbtsst/1e6:,.1f} ลบ. ({b_tbtsst/budget*100:.1f}%)\n"
-        f"  - ปล.กห.: {b_plkh/1e6:,.1f} ลบ. ({b_plkh/budget*100:.1f}%)"
     )
+    for a, d in sorted(auth_groups.items(), key=lambda x: x[1]["budget"], reverse=True):
+        msg += f"  - {a}: {d['count']} งาน | {d['budget']/1e6:,.1f} ลบ. ({d['budget']/budget*100:.1f}%)\n"
     await update.message.reply_text(msg)
 
 async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -380,8 +446,10 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     status_budget = {}
     for r in data:
         s = r.get("status", "ไม่ระบุ")
-        if "บริหารสัญญา" in s or "ตรวจรับ" in s or "ลงนาม" in s:
-            key = "บริหารสัญญา/ลงนามแล้ว"
+        if "บริหารสัญญา" in s or "ตรวจรับ" in s:
+            key = "บริหารสัญญา/ตรวจรับ"
+        elif "ลงนาม" in s:
+            key = "ลงนามในสัญญา"
         elif "อนุมัติ" in s:
             key = "อนุมัติแล้ว"
         elif "เสนอ" in s or "รายงาน" in s:
@@ -429,17 +497,19 @@ async def cmd_find_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg  = f"หน่วย: {unit_name}\n"
     msg += f"จำนวนงาน: {len(found)} รายการ | วงเงินรวม: {total_b/1e6:,.1f} ล้านบาท\n"
     msg += "--------------------\n\n"
-    for r in found[:10]:
-        msg += f"[{r['no']}] {r['name'][:50]}\n"
+    for r in found:
+        msg += f"[{r['no']}] {r['name'][:52]}\n"
         msg += f"  วงเงิน: {r['budget']/1e6:,.1f} ลบ. | {r['auth']} | {r['status']}\n\n"
-    if len(found) > 10:
-        msg += f"... และอีก {len(found)-10} รายการ"
-    await update.message.reply_text(msg)
+        if len(msg) > 3800:
+            await update.message.reply_text(msg)
+            msg = f"หน่วย {unit_name} (ต่อ)\n--------------------\n\n"
+    if msg.strip():
+        await update.message.reply_text(msg)
 
 async def cmd_search(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     args = ctx.args
     if not args:
-        await update.message.reply_text("กรุณาระบุคำค้นหาครับ\nเช่น /search ไมโครเวฟ")
+        await update.message.reply_text("กรุณาระบุคำค้นหาครับ\nเช่น /search อากาศยาน")
         return
     keyword = " ".join(args).lower()
     data    = load_data()
@@ -448,11 +518,11 @@ async def cmd_search(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"ไม่พบงานที่เกี่ยวข้องกับ '{' '.join(args)}' ครับ")
         return
     msg  = f"ผลการค้นหา: '{' '.join(args)}'\nพบ {len(found)} รายการ\n--------------------\n\n"
-    for r in found[:8]:
+    for r in found[:10]:
         msg += f"[{r['no']}] {r['unit']} — {r['name'][:45]}\n"
-        msg += f"  วงเงิน: {r['budget']/1e6:,.1f} ลบ. | {r['status']}\n\n"
-    if len(found) > 8:
-        msg += f"... และอีก {len(found)-8} รายการ"
+        msg += f"  วงเงิน: {r['budget']/1e6:,.1f} ลบ. | {r['auth']} | {r['status']}\n\n"
+    if len(found) > 10:
+        msg += f"... และอีก {len(found)-10} รายการ"
     await update.message.reply_text(msg)
 
 async def cmd_job(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -485,9 +555,11 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     if any(w in text for w in ["dashboard", "กราฟ", "ภาพ", "รูป"]):
         await cmd_dashboard(update, ctx)
+    elif any(w in text for w in ["อำนาจ", "authority"]):
+        await cmd_authority(update, ctx)
     elif any(w in text for w in ["รายงาน", "สรุป", "report"]):
         await cmd_report(update, ctx)
-    elif any(w in text for w in ["เร่งด่วน", "ด่วน", "รอดำเนินการ"]):
+    elif any(w in text for w in ["รอดำเนินการ", "เร่งด่วน", "ด่วน"]):
         await cmd_urgent(update, ctx)
     elif any(w in text for w in ["สถานะ", "status"]):
         await cmd_status(update, ctx)
@@ -529,20 +601,20 @@ async def send_weekly_report(ctx: ContextTypes.DEFAULT_TYPE):
         f"สรุปสั้น 5 บรรทัด เน้นประเด็นที่ผู้บริหารต้องรู้"
     )
     ai_summary = ask_gemini(prompt, data)
-    msg = (
-        f"รายงานประจำสัปดาห์ กบ.ทหาร\n"
-        f"ข้อมูล ณ {datetime.now().strftime('%d/%m/%Y')}\n"
-        f"====================\n\n"
-        f"{ai_summary}\n\n"
-        f"#กบทหาร #รายงานรายสัปดาห์"
+    await ctx.bot.send_message(
+        chat_id=CHAT_ID,
+        text=(
+            f"รายงานประจำสัปดาห์ กบ.ทหาร\n"
+            f"ข้อมูล ณ {datetime.now().strftime('%d/%m/%Y')}\n"
+            f"====================\n\n{ai_summary}\n\n#กบทหาร"
+        )
     )
-    await ctx.bot.send_message(chat_id=CHAT_ID, text=msg)
 
 async def check_urgent_alert(ctx: ContextTypes.DEFAULT_TYPE):
     data    = load_data()
     pending = [r for r in data if "เริ่มดำเนินการ" in r["status"]]
     if pending:
-        msg = "แจ้งเตือน! งานที่เพิ่งเริ่มดำเนินการ\n--------------------\n\n"
+        msg = f"แจ้งเตือน! งานเริ่มดำเนินการ {len(pending)} รายการ\n--------------------\n\n"
         for r in pending[:5]:
             msg += f"- {r['unit']} — {r['name'][:45]}\n  สถานะ: {r['status']}\n\n"
         await ctx.bot.send_message(chat_id=CHAT_ID, text=msg)
@@ -554,6 +626,7 @@ def main():
     app.add_handler(CommandHandler("report",     cmd_report))
     app.add_handler(CommandHandler("dashboard",  cmd_dashboard))
     app.add_handler(CommandHandler("ai",         cmd_ai))
+    app.add_handler(CommandHandler("authority",  cmd_authority))
     app.add_handler(CommandHandler("urgent",     cmd_urgent))
     app.add_handler(CommandHandler("unit",       cmd_unit))
     app.add_handler(CommandHandler("budget",     cmd_budget))
