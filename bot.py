@@ -17,17 +17,16 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN      = os.environ.get("BOT_TOKEN", "")
 CHAT_ID        = os.environ.get("CHAT_ID", "-1003777924772")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-SHEET_ID       = "1Kl5GnDGjmk7Fc93t-G3wNdiO1mBlpGVnP8Bm6Z6ej3A"
-SHEET_NAME     = "รายการจัดซื้อจัดจ้าง"
+
+# ชื่อไฟล์ XLS ที่อัปโหลดขึ้น GitHub
+XLS_FILE = os.path.join(os.path.dirname(__file__), "data.xls")
 
 # ==============================
-# ตั้งค่าฟอนต์ภาษาไทย
+# ฟอนต์ภาษาไทย
 # ==============================
 FONT_PATH = os.path.join(os.path.dirname(__file__), "Sarabun-Regular.ttf")
-THAI_FONT = None
 
 def get_thai_font(size=10):
-    global THAI_FONT
     if os.path.exists(FONT_PATH):
         return fm.FontProperties(fname=FONT_PATH, size=size)
     return fm.FontProperties(size=size)
@@ -39,85 +38,68 @@ def setup_font():
         matplotlib.rcParams['font.family'] = prop.get_name()
         logger.info(f"Thai font loaded: {prop.get_name()}")
     else:
-        logger.warning("Thai font not found, using default")
+        logger.warning("Thai font not found")
 
 setup_font()
 
 # ==============================
-# ดึงข้อมูลจาก Google Sheets
+# โหลดข้อมูลจากไฟล์ XLS
 # ==============================
 def load_data():
     try:
-        url = (f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
-               f"/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(SHEET_NAME)}")
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read().decode("utf-8")
+        import pandas as pd
+        from io import StringIO
 
+        if not os.path.exists(XLS_FILE):
+            logger.error(f"File not found: {XLS_FILE}")
+            return []
+
+        with open(XLS_FILE, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+
+        tables = pd.read_html(StringIO(content))
+        if not tables:
+            return []
+
+        df = tables[0]
         rows = []
-        lines = raw.strip().split("\n")
-        for line in lines[1:]:
-            cols = line.split('","')
-            cols = [c.strip('"').strip() for c in cols]
-            if len(cols) < 8:
-                continue
-            try:
-                no     = cols[0]
-                year   = cols[1]
-                unit   = cols[2]
-                typ    = cols[3]
-                name   = cols[4]
-                method = cols[5]
-                auth   = cols[6]
-                budget_str = cols[7].replace(",","").replace(" ","")
-                budget = float(budget_str) if budget_str else 0
-                status = cols[9] if len(cols) > 9 else ""
-                days   = cols[10] if len(cols) > 10 else ""
-                if not no or not name:
-                    continue
-                rows.append({
-                    "no": no, "year": year, "unit": unit,
-                    "type": typ, "name": name, "method": method,
-                    "auth": auth, "budget": budget,
-                    "status": status, "days": days,
-                })
-            except Exception as e:
-                logger.warning(f"Row parse error: {e}")
-                continue
-        logger.info(f"Loaded {len(rows)} rows from Sheets")
-        return rows if rows else get_fallback_data()
-    except Exception as e:
-        logger.error(f"Sheets load error: {e}")
-        return get_fallback_data()
 
-def get_fallback_data():
-    return [
-        {"no":"1","year":"2568","unit":"ยก.ทหาร","type":"จัดซื้อ","name":"งานจัดซื้ออุปกรณ์ติดตามกำลังทางบก","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":14780000,"status":"บริหารสัญญา","days":"134"},
-        {"no":"2","year":"2568","unit":"ยก.ทหาร","type":"จัดซื้อ","name":"งานจัดซื้ออุปกรณ์ระบบแผนที่สถานการณ์ร่วมดิจิทัล ระยะที่ 2","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":40840000,"status":"บริหารสัญญา","days":"163"},
-        {"no":"3","year":"2568","unit":"ยก.ทหาร","type":"จัดซื้อ","name":"งานจัดซื้ออุปกรณ์ RPASS Phase 2","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":12960000,"status":"บริหารสัญญา","days":"157"},
-        {"no":"4","year":"2568","unit":"สส.ทหาร","type":"จัดซื้อ","name":"งานจัดซื้อระบบนำเสนอห้องอำนวยการยุทธ์ร่วม ศบท.","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":25190000,"status":"บริหารสัญญา","days":"88"},
-        {"no":"5","year":"2568","unit":"สส.ทหาร","type":"จัดซื้อ","name":"งานจัดหาระบบปฏิบัติการย่านความถี่ฯ (ผูกพัน 68-71)","method":"-","auth":"ปล.กห.","budget":800000000,"status":"บริหารสัญญา","days":"761"},
-        {"no":"6","year":"2568พ","unit":"ผท.ทหาร","type":"จัดซื้อ","name":"เครื่องมือระบบประมวลผลจัดทำแผนที่ กลุ่มจังหวัดที่ 1","method":"-","auth":"ผบ.ทสส.","budget":55550000,"status":"บริหารสัญญา งวดที่ 1","days":"2"},
-        {"no":"7","year":"2568พ","unit":"ผท.ทหาร","type":"จัดซื้อ","name":"เครื่องมือสำรวจข้อมูลภูมิประเทศ ปี 2568","method":"-","auth":"ผบ.ทสส.","budget":20750000,"status":"บริหารสัญญา งวดที่ 1","days":"26"},
-        {"no":"8","year":"2568พ","unit":"ผท.ทหาร","type":"จัดซื้อ","name":"เครื่องมือทำแผนที่สามมิติ ปี 2568","method":"-","auth":"ผบ.ทสส.","budget":21980000,"status":"บริหารสัญญา","days":"47"},
-        {"no":"9","year":"2568พ","unit":"ผท.ทหาร","type":"จัดเช่า","name":"เช่าเครื่องบินถ่ายภาพทางอากาศ กลุ่มจังหวัดที่ 1","method":"-","auth":"ผบ.ทสส.","budget":128440000,"status":"ตรวจรับ/บริหารสัญญา","days":""},
-        {"no":"10","year":"2568พ","unit":"ผท.ทหาร","type":"จัดเช่า","name":"เช่าเครื่องมือถ่ายภาพทางอากาศ ปี 2568","method":"-","auth":"ผบ.ทสส.","budget":69980000,"status":"ตรวจรับ/บริหารสัญญา","days":""},
-        {"no":"11","year":"2568พ","unit":"สส.ทหาร","type":"จัดซื้อ","name":"ชุดวิทยุไมโครเวฟ IP ภาคตะวันออกเฉียงเหนือและภาคเหนือตอนล่าง","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":98570000,"status":"บริหารสัญญา","days":"193"},
-        {"no":"12","year":"2568พ","unit":"สส.ทหาร","type":"จัดซื้อ","name":"ชุดไมโครเวฟ ภาคกลางและภาคเหนือตอนบน","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":96880000,"status":"บริหารสัญญา","days":"193"},
-        {"no":"13","year":"2568พ","unit":"สส.ทหาร","type":"จัดซื้อ","name":"ชุดไมโครเวฟ ภาคใต้","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":99220000,"status":"บริหารสัญญา","days":"193"},
-        {"no":"14","year":"2569","unit":"นซบ.ทหาร","type":"จ้าง","name":"งานจ้างอบรมชุดปฏิบัติการไซเบอร์","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":18820000,"status":"อยู่ระหว่างทบทวน TOR","days":""},
-        {"no":"15","year":"2569","unit":"นซบ.ทหาร","type":"จัดซื้อ","name":"ระบบป้องกันภัยคุกคามไซเบอร์","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":26827416,"status":"อยู่ระหว่างอนุมัติ DCIO","days":""},
-        {"no":"16","year":"2569","unit":"นซบ.ทหาร","type":"จัดซื้อ","name":"ระบบสนับสนุนป้องกันภัยไซเบอร์","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":16532398,"status":"อยู่ระหว่างอนุมัติ DCIO","days":""},
-        {"no":"18","year":"2569","unit":"ยก.ทหาร","type":"จ้าง","name":"จ้างพัฒนาระบบป้องกันยาเสพติด","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":21174984,"status":"รอดำเนินการ","days":""},
-        {"no":"19","year":"2569","unit":"ยก.ทหาร","type":"จ้าง","name":"จ้างพัฒนาระบบประเมินพร้อมรบ","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":29500000,"status":"รอดำเนินการ","days":""},
-        {"no":"21","year":"2569","unit":"สส.ทหาร","type":"จ้าง","name":"ระบบยืนยันตัวตนเครือข่าย บก.ทท. (210 วัน)","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":44000000,"status":"รอดำเนินการ","days":"210"},
-        {"no":"23","year":"2569","unit":"สส.ทหาร","type":"จ้าง","name":"Data Governance & Data Management (270 วัน)","method":"คัดเลือก ม.56(1)(ฉ)","auth":"ผบ.ทสส.","budget":22000000,"status":"รอดำเนินการ","days":"270"},
-        {"no":"24","year":"2569","unit":"ผท.ทหาร","type":"จ้าง","name":"ซ่อมบำรุงเฮลิคอปเตอร์ EC155 B1","method":"เจาะจง ม.56(2)(ซ)","auth":"ผบ.ทสส.","budget":31800000,"status":"บริหารสัญญา","days":"289"},
-        {"no":"25","year":"2569","unit":"ผท.ทหาร","type":"จ้าง","name":"ซ่อมบำรุง BEECHCRAFT KING AIR 350i #93311","method":"เจาะจง ม.56(2)(ค)","auth":"ผบ.ทสส.","budget":61250000,"status":"อยู่ระหว่างเสนอ จก.","days":""},
-        {"no":"26","year":"2569","unit":"ยบ.ทหาร","type":"จัดซื้อ","name":"รถยนต์โดยสารปรับอากาศ 42 ที่นั่ง 4 คัน","method":"ประกาศเชิญชวน","auth":"ผบ.ทสส.","budget":25800000,"status":"อยู่ระหว่างเสนอ ผบ.ทสส.","days":""},
-        {"no":"28","year":"2569","unit":"นทพ.","type":"จัดซื้อ","name":"รถบดล้อเหล็กสั่นสะเทือน 10 คัน","method":"เจาะจง ม.56(2)(จ)","auth":"ผบ.ทสส.","budget":32280000,"status":"เสนอ จก.กบ.ทหาร","days":""},
-        {"no":"29","year":"2569","unit":"นทพ.","type":"จัดซื้อ","name":"รถขุดตักมาตรฐาน 12 คัน","method":"ประกาศเชิญชวน","auth":"ผบ.ทสส.","budget":62016000,"status":"รอดำเนินการ","days":""},
-    ]
+        for _, r in df.iterrows():
+            try:
+                no     = str(r.iloc[0])
+                year   = str(r.iloc[1])
+                unit   = str(r.iloc[2])
+                name   = str(r.iloc[3])
+                typ    = str(r.iloc[4])
+                method = str(r.iloc[5])
+                auth   = str(r.iloc[6])
+                status = str(r.iloc[27]) if len(r) > 27 else ""
+                budget = float(r.iloc[7])
+            except:
+                continue
+
+            if no in ['nan','ลำดับ',''] or name in ['nan','ชื่อโครงการ','']:
+                continue
+
+            rows.append({
+                'no'    : no,
+                'year'  : year,
+                'unit'  : unit,
+                'name'  : name,
+                'type'  : typ,
+                'method': method,
+                'auth'  : auth,
+                'budget': budget,
+                'status': status,
+                'days'  : '',
+            })
+
+        logger.info(f"Loaded {len(rows)} rows from XLS")
+        return rows
+
+    except Exception as e:
+        logger.error(f"XLS load error: {e}")
+        return []
 
 def get_summary(data=None):
     if data is None:
@@ -125,20 +107,22 @@ def get_summary(data=None):
     total  = len(data)
     budget = sum(r["budget"] for r in data)
     units  = Counter(r["unit"] for r in data)
-    urgent = [r for r in data if r["days"].isdigit() and int(r["days"]) <= 50]
-    return total, budget, units, urgent
+    # งานที่ยังไม่เสร็จ
+    pending = [r for r in data if not any(
+        w in r["status"] for w in ["บริหารสัญญา","ตรวจรับ","ลงนาม"]
+    )]
+    return total, budget, units, pending
 
 def data_to_text(data):
     lines = []
-    total, budget, units, urgent = get_summary(data)
+    total, budget, units, pending = get_summary(data)
     lines.append(f"ข้อมูลจัดซื้อจัดจ้าง กบ.ทหาร ณ {datetime.now().strftime('%d/%m/%Y')}")
     lines.append(f"งานทั้งหมด: {total} รายการ | วงเงินรวม: {budget/1e6:,.1f} ล้านบาท")
     lines.append("")
-    for r in data:
+    for r in data[:50]:  # จำกัด 50 รายการเพื่อไม่ให้ context ยาวเกินไป
         lines.append(
             f"[{r['no']}] {r['unit']} | {r['name'][:60]} | "
-            f"วงเงิน {r['budget']/1e6:,.1f} ลบ. | "
-            f"สถานะ: {r['status']} | เหลือ: {r['days']} วัน"
+            f"วงเงิน {r['budget']/1e6:,.1f} ลบ. | สถานะ: {r['status']}"
         )
     return "\n".join(lines)
 
@@ -178,17 +162,14 @@ def ask_gemini(prompt, data=None):
         return f"Gemini ตอบไม่ได้ตอนนี้ครับ ({e})"
 
 # ==============================
-# Dashboard Image (พร้อมฟอนต์ไทย)
+# Dashboard Image
 # ==============================
 def build_dashboard_image(data=None):
     if data is None:
         data = load_data()
-    total, budget, units, urgent = get_summary(data)
-    fp = get_thai_font()
+    total, budget, units, pending = get_summary(data)
 
     fig = plt.figure(figsize=(14, 9), facecolor="#0a1628")
-
-    # Title
     fig.text(0.5, 0.97, "Dashboard จัดซื้อจัดจ้าง กบ.ทหาร",
              ha="center", va="top", color="white", fontsize=18,
              fontweight="bold", fontproperties=get_thai_font(18))
@@ -196,11 +177,11 @@ def build_dashboard_image(data=None):
              ha="center", va="top", color="#8a9bb8", fontsize=10,
              fontproperties=get_thai_font(10))
 
-    # KPI cards
+    # KPI
     kpi_data = [
         ("งานทั้งหมด", f"{total}", "#00d4ff"),
         ("วงเงินรวม", f"{budget/1e6:,.0f} ลบ.", "#f5a623"),
-        ("งานใกล้ครบ", f"{len(urgent)}", "#ff4d6d"),
+        ("รอดำเนินการ", f"{len(pending)}", "#ff4d6d"),
         ("หน่วยงาน", f"{len(units)}", "#00c896"),
     ]
     for i, (label, val, color) in enumerate(kpi_data):
@@ -215,11 +196,11 @@ def build_dashboard_image(data=None):
                 color="#8a9bb8", fontproperties=get_thai_font(9))
         ax.axis("off")
 
-    # Donut chart
+    # Donut
     ax1 = fig.add_axes([0.03, 0.28, 0.30, 0.44])
     ax1.set_facecolor("#0a1628")
-    unit_names = [u for u, c in units.most_common()]
-    unit_vals  = [c for u, c in units.most_common()]
+    unit_names = [u for u, c in units.most_common()[:6]]
+    unit_vals  = [c for u, c in units.most_common()[:6]]
     colors = ["#00d4ff","#00c896","#f5a623","#ff4d6d","#a78bfa","#34d399"]
     ax1.pie(unit_vals, colors=colors[:len(unit_vals)], startangle=90,
             wedgeprops=dict(width=0.5))
@@ -229,23 +210,23 @@ def build_dashboard_image(data=None):
               label=f"{unit_names[i]} ({unit_vals[i]})")
               for i in range(len(unit_names))]
     leg = ax1.legend(handles=legend, loc="lower center",
-                     bbox_to_anchor=(0.5, -0.28), ncol=2, fontsize=8,
+                     bbox_to_anchor=(0.5, -0.30), ncol=2, fontsize=8,
                      labelcolor="white", facecolor="#0f2044", edgecolor="none")
     for text in leg.get_texts():
         text.set_fontproperties(get_thai_font(8))
 
-    # Bar chart
+    # Bar chart วงเงิน
     ax2 = fig.add_axes([0.38, 0.28, 0.58, 0.44])
     ax2.set_facecolor("#0f2044")
     unit_budget = {}
     for r in data:
         unit_budget[r["unit"]] = unit_budget.get(r["unit"], 0) + r["budget"]
-    sorted_u = sorted(unit_budget.items(), key=lambda x: x[1], reverse=True)
+    sorted_u = sorted(unit_budget.items(), key=lambda x: x[1], reverse=True)[:10]
     names = [x[0] for x in sorted_u]
     vals  = [x[1]/1e6 for x in sorted_u]
     bars  = ax2.barh(names, vals, color="#00d4ff", alpha=0.85)
     for bar, val in zip(bars, vals):
-        ax2.text(bar.get_width() + 5, bar.get_y() + bar.get_height()/2,
+        ax2.text(bar.get_width() + 2, bar.get_y() + bar.get_height()/2,
                  f"{val:,.0f}", va="center", color="#8a9bb8", fontsize=9)
     ax2.set_facecolor("#0f2044")
     ax2.tick_params(colors="#8a9bb8", labelsize=9)
@@ -254,20 +235,20 @@ def build_dashboard_image(data=None):
     ax2.spines[:].set_visible(False)
     ax2.set_title("วงเงินตามหน่วย (ล้านบาท)", color="#8a9bb8", fontsize=11, pad=8,
                   fontproperties=get_thai_font(11))
-    ax2.set_xlim(0, max(vals) * 1.25)
+    if vals:
+        ax2.set_xlim(0, max(vals) * 1.25)
 
-    # Urgent section
+    # สถานะงาน (bottom)
     ax3 = fig.add_axes([0.03, 0.03, 0.94, 0.21])
     ax3.set_facecolor("#0f2044")
     ax3.set_xlim(0, 1); ax3.set_ylim(0, 1); ax3.axis("off")
-    ax3.text(0.01, 0.92, "งานต้องติดตามเร่งด่วน",
+    ax3.text(0.01, 0.92, "งานที่รอดำเนินการ (ตัวอย่าง)",
              color="#ff4d6d", fontsize=11, fontweight="bold", va="top",
              fontproperties=get_thai_font(11))
-    urgent_show = sorted(urgent, key=lambda x: int(x["days"])) if urgent else []
-    for i, r in enumerate(urgent_show[:4]):
+    for i, r in enumerate(pending[:4]):
         color = "#ff4d6d" if i < 2 else "#f5a623"
         ax3.text(0.01, 0.70 - i*0.18,
-                 f"  - {r['unit']} - {r['name'][:55]} (เหลือ {r['days']} วัน)",
+                 f"  - {r['unit']} — {r['name'][:55]} | {r['status']}",
                  color=color, fontsize=9, va="top",
                  fontproperties=get_thai_font(9))
 
@@ -280,22 +261,17 @@ def build_dashboard_image(data=None):
 def build_report(data=None):
     if data is None:
         data = load_data()
-    total, budget, units, urgent = get_summary(data)
+    total, budget, units, pending = get_summary(data)
     today = datetime.now().strftime("%d/%m/%Y %H:%M น.")
     unit_lines = "\n".join([f"  - {u}: {c} รายการ" for u, c in units.most_common()])
-    urg_text = ""
-    if urgent:
-        urg_text = "\nงานใกล้ครบกำหนด:\n"
-        for r in sorted(urgent, key=lambda x: int(x["days"])):
-            urg_text += f"  - {r['unit']} - {r['name'][:35]}... (เหลือ {r['days']} วัน)\n"
     return (
         f"รายงานจัดซื้อจัดจ้าง กบ.ทหาร\n"
         f"ข้อมูล ณ {today}\n"
         f"--------------------\n\n"
         f"งานทั้งหมด: {total} รายการ\n"
-        f"วงเงินรวม: {budget/1e6:,.1f} ล้านบาท\n\n"
-        f"สรุปตามหน่วย:\n{unit_lines}\n"
-        f"{urg_text}\n"
+        f"วงเงินรวม: {budget/1e6:,.1f} ล้านบาท\n"
+        f"รอดำเนินการ: {len(pending)} รายการ\n\n"
+        f"สรุปตามหน่วย:\n{unit_lines}\n\n"
         f"#กบทหาร #จัดซื้อจัดจ้าง"
     )
 
@@ -309,7 +285,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/report - รายงานสรุปประจำวัน\n"
         "/dashboard - ภาพ Dashboard\n"
         "/ai - AI วิเคราะห์ภาพรวม\n"
-        "/urgent - งานเร่งด่วน\n"
+        "/urgent - งานรอดำเนินการ\n"
         "/unit - สรุปตามหน่วย\n"
         "/budget - สรุปวงเงิน\n"
         "/status - สรุปสถานะงาน\n"
@@ -329,7 +305,10 @@ async def cmd_dashboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("กำลังสร้าง Dashboard รอสักครู่...")
     try:
         data = load_data()
-        buf  = build_dashboard_image(data)
+        if not data:
+            await msg.edit_text("ไม่พบข้อมูลครับ กรุณาตรวจสอบไฟล์ data.xls บน GitHub")
+            return
+        buf = build_dashboard_image(data)
         await update.message.reply_photo(
             photo=buf,
             caption=f"Dashboard จัดซื้อจัดจ้าง กบ.ทหาร\nข้อมูล ณ {datetime.now().strftime('%d/%m/%Y %H:%M น.')}"
@@ -342,11 +321,11 @@ async def cmd_dashboard(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_ai(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("Gemini AI กำลังวิเคราะห์ข้อมูล รอสักครู่...")
     data = load_data()
-    total, budget, units, urgent = get_summary(data)
+    total, budget, units, pending = get_summary(data)
     prompt = (
         f"วิเคราะห์ภาพรวมงานจัดซื้อจัดจ้าง กบ.ทหาร ทั้งหมด {total} รายการ "
         f"วงเงินรวม {budget/1e6:,.1f} ล้านบาท "
-        f"มีงานใกล้ครบกำหนด {len(urgent)} รายการ "
+        f"รอดำเนินการ {len(pending)} รายการ "
         f"สรุปประเด็นสำคัญที่ผู้บริหารควรทราบ ข้อเสี่ยง และข้อแนะนำ"
     )
     reply = ask_gemini(prompt, data)
@@ -354,14 +333,16 @@ async def cmd_ai(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_urgent(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
-    _, _, _, urgent = get_summary(data)
-    msg = "งานเร่งด่วนที่ต้องติดตาม\n--------------------\n\n"
-    if urgent:
-        msg += "งานใกล้ครบกำหนด (เหลือ < 50 วัน):\n"
-        for r in sorted(urgent, key=lambda x: int(x["days"])):
-            msg += f"  - {r['unit']} - {r['name'][:45]}\n    เหลือ {r['days']} วัน | {r['budget']/1e6:,.1f} ลบ.\n\n"
+    _, _, _, pending = get_summary(data)
+    msg = "งานที่รอดำเนินการ\n--------------------\n\n"
+    if pending:
+        for r in pending[:15]:
+            msg += f"  [{r['no']}] {r['unit']} — {r['name'][:45]}\n"
+            msg += f"    สถานะ: {r['status']} | {r['budget']/1e6:,.1f} ลบ.\n\n"
+        if len(pending) > 15:
+            msg += f"... และอีก {len(pending)-15} รายการ"
     else:
-        msg += "ไม่มีงานที่ใกล้ครบกำหนดในขณะนี้\n"
+        msg += "ไม่มีงานที่รอดำเนินการครับ"
     await update.message.reply_text(msg)
 
 async def cmd_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -373,7 +354,7 @@ async def cmd_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg = "สรุปตามหน่วย\n--------------------\n\n"
     for u, c in unit_count.most_common():
         b = unit_budget.get(u, 0)
-        msg += f"{u}\n   จำนวนงาน: {c} รายการ\n   วงเงิน: {b/1e6:,.1f} ล้านบาท\n\n"
+        msg += f"{u}\n   จำนวนงาน: {c} รายการ | วงเงิน: {b/1e6:,.1f} ล้านบาท\n\n"
     msg += "ดูรายละเอียด: /find_unit [ชื่อหน่วย]"
     await update.message.reply_text(msg)
 
@@ -399,14 +380,14 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     status_budget = {}
     for r in data:
         s = r.get("status", "ไม่ระบุ")
-        if "บริหารสัญญา" in s or "ตรวจรับ" in s:
-            key = "บริหารสัญญา/ตรวจรับ"
-        elif "รอดำเนินการ" in s or "รอ" in s:
-            key = "รอดำเนินการ"
-        elif "อยู่ระหว่าง" in s or "เสนอ" in s:
-            key = "อยู่ระหว่างดำเนินการ"
-        elif "DCIO" in s or "TOR" in s:
-            key = "รอ TOR/DCIO"
+        if "บริหารสัญญา" in s or "ตรวจรับ" in s or "ลงนาม" in s:
+            key = "บริหารสัญญา/ลงนามแล้ว"
+        elif "อนุมัติ" in s:
+            key = "อนุมัติแล้ว"
+        elif "เสนอ" in s or "รายงาน" in s:
+            key = "อยู่ระหว่างเสนอ"
+        elif "เริ่มดำเนินการ" in s or "TOR" in s or "ราคากลาง" in s:
+            key = "เริ่มดำเนินการ/TOR"
         else:
             key = "อื่นๆ"
         status_count[key] += 1
@@ -435,7 +416,7 @@ async def cmd_yearly(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_find_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     args = ctx.args
     if not args:
-        await update.message.reply_text("กรุณาระบุชื่อหน่วยครับ\nเช่น /find_unit ยก.ทหาร")
+        await update.message.reply_text("กรุณาระบุชื่อหน่วยครับ\nเช่น /find_unit นซบ.ทหาร")
         return
     keyword = " ".join(args).lower()
     data    = load_data()
@@ -448,10 +429,11 @@ async def cmd_find_unit(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg  = f"หน่วย: {unit_name}\n"
     msg += f"จำนวนงาน: {len(found)} รายการ | วงเงินรวม: {total_b/1e6:,.1f} ล้านบาท\n"
     msg += "--------------------\n\n"
-    for r in found:
-        days_txt = f"เหลือ {r['days']} วัน" if r["days"].isdigit() else r["status"]
+    for r in found[:10]:
         msg += f"[{r['no']}] {r['name'][:50]}\n"
-        msg += f"  วงเงิน: {r['budget']/1e6:,.1f} ลบ. | {r['auth']} | {days_txt}\n\n"
+        msg += f"  วงเงิน: {r['budget']/1e6:,.1f} ลบ. | {r['auth']} | {r['status']}\n\n"
+    if len(found) > 10:
+        msg += f"... และอีก {len(found)-10} รายการ"
     await update.message.reply_text(msg)
 
 async def cmd_search(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -467,7 +449,7 @@ async def cmd_search(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     msg  = f"ผลการค้นหา: '{' '.join(args)}'\nพบ {len(found)} รายการ\n--------------------\n\n"
     for r in found[:8]:
-        msg += f"[{r['no']}] {r['unit']} - {r['name'][:45]}\n"
+        msg += f"[{r['no']}] {r['unit']} — {r['name'][:45]}\n"
         msg += f"  วงเงิน: {r['budget']/1e6:,.1f} ลบ. | {r['status']}\n\n"
     if len(found) > 8:
         msg += f"... และอีก {len(found)-8} รายการ"
@@ -476,7 +458,7 @@ async def cmd_search(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_job(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     args = ctx.args
     if not args:
-        await update.message.reply_text("กรุณาระบุเลขที่งานครับ\nเช่น /job 11")
+        await update.message.reply_text("กรุณาระบุเลขที่งานครับ\nเช่น /job 5")
         return
     no    = args[0]
     data  = load_data()
@@ -484,18 +466,17 @@ async def cmd_job(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not found:
         await update.message.reply_text(f"ไม่พบงานเลขที่ {no} ครับ")
         return
-    r        = found[0]
-    days_txt = f"เหลือ {r['days']} วัน" if r["days"].isdigit() else "-"
+    r   = found[0]
     msg = (
         f"รายละเอียดงานที่ {r['no']}\n--------------------\n\n"
         f"หน่วย: {r['unit']}\n"
         f"งาน: {r['name']}\n"
+        f"ประเภท: {r['type']}\n"
         f"วิธี: {r['method']}\n"
         f"อำนาจอนุมัติ: {r['auth']}\n"
         f"วงเงิน: {r['budget']/1e6:,.2f} ล้านบาท\n"
         f"ปีงบประมาณ: {r['year']}\n"
-        f"สถานะ: {r['status']}\n"
-        f"เหลือเวลา: {days_txt}"
+        f"สถานะ: {r['status']}"
     )
     await update.message.reply_text(msg)
 
@@ -506,7 +487,7 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await cmd_dashboard(update, ctx)
     elif any(w in text for w in ["รายงาน", "สรุป", "report"]):
         await cmd_report(update, ctx)
-    elif any(w in text for w in ["เร่งด่วน", "ด่วน", "ครบกำหนด"]):
+    elif any(w in text for w in ["เร่งด่วน", "ด่วน", "รอดำเนินการ"]):
         await cmd_urgent(update, ctx)
     elif any(w in text for w in ["สถานะ", "status"]):
         await cmd_status(update, ctx)
@@ -514,12 +495,12 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await cmd_yearly(update, ctx)
     elif any(w in text for w in ["วงเงิน", "งบ", "เงิน"]):
         await cmd_budget(update, ctx)
-    elif any(w in text for w in ["ค้าง", "รายการ", "ทั้งหมด"]):
-        total, budget, units, urgent = get_summary(data)
+    elif any(w in text for w in ["รายการ", "ทั้งหมด", "มีกี่"]):
+        total, budget, units, pending = get_summary(data)
         await update.message.reply_text(
             f"งานทั้งหมด: {total} รายการ\n"
             f"วงเงินรวม: {budget/1e6:,.1f} ล้านบาท\n"
-            f"งานใกล้ครบกำหนด: {len(urgent)} รายการ"
+            f"รอดำเนินการ: {len(pending)} รายการ"
         )
     else:
         msg = await update.message.reply_text("Gemini AI กำลังประมวลผล...")
@@ -540,11 +521,11 @@ async def send_daily_report(ctx: ContextTypes.DEFAULT_TYPE):
 
 async def send_weekly_report(ctx: ContextTypes.DEFAULT_TYPE):
     data = load_data()
-    total, budget, units, urgent = get_summary(data)
+    total, budget, units, pending = get_summary(data)
     prompt = (
         f"สรุปรายงานประจำสัปดาห์งานจัดซื้อจัดจ้าง กบ.ทหาร "
         f"งานทั้งหมด {total} รายการ วงเงิน {budget/1e6:,.1f} ล้านบาท "
-        f"งานใกล้ครบกำหนด {len(urgent)} รายการ "
+        f"รอดำเนินการ {len(pending)} รายการ "
         f"สรุปสั้น 5 บรรทัด เน้นประเด็นที่ผู้บริหารต้องรู้"
     )
     ai_summary = ask_gemini(prompt, data)
@@ -558,12 +539,12 @@ async def send_weekly_report(ctx: ContextTypes.DEFAULT_TYPE):
     await ctx.bot.send_message(chat_id=CHAT_ID, text=msg)
 
 async def check_urgent_alert(ctx: ContextTypes.DEFAULT_TYPE):
-    data   = load_data()
-    urgent = [r for r in data if r["days"].isdigit() and int(r["days"]) <= 7]
-    if urgent:
-        msg = "แจ้งเตือน! งานใกล้ครบกำหนด 7 วัน\n--------------------\n\n"
-        for r in sorted(urgent, key=lambda x: int(x["days"])):
-            msg += f"- {r['unit']} - {r['name'][:45]}\n  เหลือ {r['days']} วัน\n\n"
+    data    = load_data()
+    pending = [r for r in data if "เริ่มดำเนินการ" in r["status"]]
+    if pending:
+        msg = "แจ้งเตือน! งานที่เพิ่งเริ่มดำเนินการ\n--------------------\n\n"
+        for r in pending[:5]:
+            msg += f"- {r['unit']} — {r['name'][:45]}\n  สถานะ: {r['status']}\n\n"
         await ctx.bot.send_message(chat_id=CHAT_ID, text=msg)
 
 def main():
@@ -585,7 +566,7 @@ def main():
     app.job_queue.run_daily(send_daily_report,  time=time(hour=8,  minute=0))
     app.job_queue.run_daily(send_weekly_report, time=time(hour=7,  minute=30), days=(0,))
     app.job_queue.run_daily(check_urgent_alert, time=time(hour=8,  minute=30))
-    logger.info("Bot started with Thai font + Gemini AI + Google Sheets!")
+    logger.info("Bot started!")
     app.run_polling()
 
 if __name__ == "__main__":
